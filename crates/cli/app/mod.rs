@@ -252,38 +252,26 @@ impl App {
                     select,
                     delta,
                 } => {
-                    self.app
-                        .viewer
-                        .mux
-                        .demux_mut(self.app.viewer.linked_filters, |instance| {
-                            instance
-                                .compositor_mut()
-                                .move_select(direction, select, delta)
-                        });
+                    self.app.viewer.demux_mut(|instance| {
+                        instance
+                            .compositor_mut()
+                            .move_select(direction, select, delta)
+                    });
                 }
                 FilterAction::ToggleSelectedFilter => {
-                    self.app
-                        .viewer
-                        .mux
-                        .demux_mut(self.app.viewer.linked_filters, |instance| {
-                            instance.toggle_selected_filters();
-                        });
+                    self.app.viewer.demux_mut(|instance| {
+                        instance.toggle_selected_filters();
+                    });
                 }
                 FilterAction::RemoveSelectedFilter => {
-                    self.app
-                        .viewer
-                        .mux
-                        .demux_mut(self.app.viewer.linked_filters, |instance| {
-                            instance.remove_selected_filters();
-                        });
+                    self.app.viewer.demux_mut(|instance| {
+                        instance.remove_selected_filters();
+                    });
                 }
                 FilterAction::Displace { direction, delta } => {
-                    self.app
-                        .viewer
-                        .mux
-                        .demux_mut(self.app.viewer.linked_filters, |instance| {
-                            instance.displace_selected_filters(direction, delta);
-                        });
+                    self.app.viewer.demux_mut(|instance| {
+                        instance.displace_selected_filters(direction, delta);
+                    });
                 }
                 FilterAction::ToggleSpecificFilter {
                     target_view,
@@ -532,19 +520,16 @@ impl App {
         }
 
         let mut e = None;
-        self.app
-            .viewer
-            .mux
-            .demux_mut(self.app.viewer.linked_filters, |instance| {
-                let result = if edit {
-                    instance.edit_search_filter(pat, escaped)
-                } else {
-                    instance.add_search_filter(pat, escaped)
-                };
-                if let Err(err) = result {
-                    e.get_or_insert(err);
-                };
-            });
+        self.app.viewer.demux_mut(|instance| {
+            let result = if edit {
+                instance.edit_search_filter(pat, escaped)
+            } else {
+                instance.add_search_filter(pat, escaped)
+            };
+            if let Err(err) = result {
+                e.get_or_insert(err);
+            };
+        });
 
         if let Some(err) = e {
             self.app.viewer.status.msg(match err {
@@ -741,28 +726,19 @@ impl App {
                     self.app.viewer.mode = InputMode::Config;
                 }
                 Some("clear") => {
-                    self.app
-                        .viewer
-                        .mux
-                        .demux_mut(self.app.viewer.linked_filters, |instance| {
-                            instance.clear_filters();
-                        });
+                    self.app.viewer.demux_mut(|instance| {
+                        instance.clear_filters();
+                    });
                 }
                 Some("union" | "u" | "||" | "|") => {
-                    self.app
-                        .viewer
-                        .mux
-                        .demux_mut(self.app.viewer.linked_filters, |instance| {
-                            instance.set_composite_strategy(CompositeStrategy::Union);
-                        });
+                    self.app.viewer.demux_mut(|instance| {
+                        instance.set_composite_strategy(CompositeStrategy::Union);
+                    });
                 }
                 Some("intersect" | "i" | "&&" | "&") => {
-                    self.app
-                        .viewer
-                        .mux
-                        .demux_mut(self.app.viewer.linked_filters, |instance| {
-                            instance.set_composite_strategy(CompositeStrategy::Intersection);
-                        });
+                    self.app.viewer.demux_mut(|instance| {
+                        instance.set_composite_strategy(CompositeStrategy::Intersection);
+                    });
                 }
                 Some(cmd) => {
                     self.app
@@ -983,6 +959,13 @@ impl Viewer {
 
     pub fn toggle_gutter(&mut self) {
         self.gutter = !self.gutter;
+    }
+
+    pub fn demux_mut<F>(&mut self, f: F)
+    where
+        F: FnMut(&mut Instance),
+    {
+        self.mux.demux_mut(self.linked_filters, f);
     }
 }
 
