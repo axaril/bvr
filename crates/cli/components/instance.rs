@@ -90,8 +90,7 @@ impl Instance {
             .fit_view(viewport_height, viewport_width);
         self.view.set_end_index(self.visible_line_count());
 
-        self.view
-            .cache_view(&self.buf, |cache| cache.color_cache(&self.compositor))
+        self.view.cache_view(&self.buf, Some(&self.compositor))
     }
 
     pub fn add_search_filter(&mut self, pattern: &str, literal: bool) -> Result<(), regex::Error> {
@@ -131,7 +130,15 @@ impl Instance {
             ViewDelta::Number(n) => usize::from(n),
             ViewDelta::Page => self.view.viewport().height(),
             ViewDelta::HalfPage => self.view.viewport().height().div_ceil(2),
-            ViewDelta::Boundary => usize::MAX,
+            ViewDelta::Boundary => {
+                let top = match dir {
+                    Direction::Back => 0,
+                    Direction::Next => self.view.viewport().bottom().saturating_sub(1),
+                };
+                self.view.viewport_mut().top_to(top);
+                self.view.set_follow_output(false);
+                return;
+            }
             ViewDelta::Match => {
                 let current = self.view.viewport().top();
                 if let Some(next) =
@@ -143,7 +150,10 @@ impl Instance {
                 return;
             }
         };
-        self.view.viewport_mut().pan_vertical(dir, delta);
+        for _ in 0..delta {
+            self.view.viewport_mut().pan_vertical(dir);
+            let _ = self.view.cache_view(&self.buf, None);
+        }
         self.view.set_follow_output(false);
     }
 
@@ -154,7 +164,10 @@ impl Instance {
             ViewDelta::HalfPage => self.viewport().width().div_ceil(2),
             _ => 0,
         };
-        self.viewport_mut().pan_horizontal(dir, delta);
+        for _ in 0..delta {
+            self.view.viewport_mut().pan_horizontal(dir);
+            let _ = self.view.cache_view(&self.buf, None);
+        }
         self.set_follow_output(false);
     }
 

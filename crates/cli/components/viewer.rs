@@ -62,51 +62,43 @@ impl ViewCache {
         self.composite.get(index)
     }
 
-    fn push_front(&mut self, index: usize, buf: &SegBuffer) {
+    fn get_cached_line(&self, index: usize, buf: &SegBuffer) -> Option<CachedLine> {
         let Some(line_number) = self.line_at_view_index(index) else {
-            return;
+            return None;
         };
 
         let Some(data) = buf.get_bytes(line_number) else {
-            todo!("push empty line");
+            return None;
         };
 
         let data = crate::text::lossy_normalize_width(&data);
 
-        self.cache.push_front(CachedLine {
+        Some(CachedLine {
             index,
             line_number,
             data: data.into_owned(),
             color: Color::Reset,
             bookmarked: false,
-        });
+        })
+    }
+
+    fn push_front(&mut self, index: usize, buf: &SegBuffer) {
+        if let Some(line) = self.get_cached_line(index, buf) {
+            self.cache.push_front(line);
+        }
     }
 
     fn push_back(&mut self, index: usize, buf: &SegBuffer) -> bool {
-        let Some(line_number) = self.line_at_view_index(index) else {
-            return false;
-        };
-
-        let Some(data) = buf.get_bytes(line_number) else {
-            return false;
-        };
-
-        let data = crate::text::lossy_normalize_width(&data);
-
-        self.cache.push_back(CachedLine {
-            index,
-            line_number,
-            data: data.into_owned(),
-            color: Color::Reset,
-            bookmarked: false,
-        });
+        if let Some(line) = self.get_cached_line(index, buf) {
+            self.cache.push_back(line);
+        }
         true
     }
 
     pub fn cache_view(
         &mut self,
         buf: &SegBuffer,
-        preprocess: impl FnOnce(&mut Self),
+        compositor: Option<&Compositor>,
     ) -> impl Iterator<Item = &CachedLine> {
         if self.follow_output {
             self.curr_viewport
@@ -146,7 +138,9 @@ impl ViewCache {
 
         self.prev_viewport = self.curr_viewport;
 
-        preprocess(self);
+        if let Some(compositor) = compositor {
+            self.color_cache(compositor);
+        }
 
         self.cache.iter()
     }
