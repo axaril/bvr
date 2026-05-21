@@ -180,7 +180,7 @@ impl LineIndexWriter {
     pub fn index_stream(
         mut self,
         mut stream: BoxedStream,
-        outgoing: Sender<Segment>,
+        outgoing: Sender<Arc<Segment>>,
         segment_size: u64,
     ) -> Result<()> {
         let mut len = 0;
@@ -198,14 +198,16 @@ impl LineIndexWriter {
                 }
             }
 
+            let segment = Arc::new(segment.into_read_only()?);
+
+            outgoing
+                .send(segment.clone())
+                .map_err(|_| Error::Internal)?;
+
             for i in memchr::memchr_iter(b'\n', &segment) {
                 let line_data = len + i as u64;
                 self.push(line_data + 1);
             }
-
-            outgoing
-                .send(segment.into_read_only()?)
-                .map_err(|_| Error::Internal)?;
 
             if buf_len == 0 {
                 break;
@@ -276,7 +278,7 @@ impl LineIndex {
 
     pub fn read_stream(
         stream: BoxedStream,
-        outgoing: Sender<Segment>,
+        outgoing: Sender<Arc<Segment>>,
         block_until_complete: bool,
         segment_size: u64,
     ) -> Result<Self> {

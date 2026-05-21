@@ -11,8 +11,8 @@ readme = "README.md"
 thiserror = "2.0"
 memchr = "2.7"
 memmap2 = "0.9"
-lru = "0.16.0"
-regex = "1.10"
+lru = { workspace = true }
+regex = { workspace = true }
 arc-swap = "1.7"
 
 [dev-dependencies]
