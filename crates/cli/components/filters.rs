@@ -10,7 +10,7 @@ use crate::{
     direction::Direction,
     regex_compile,
 };
-use bvr_core::{matches::CompositeStrategy, LineSet, SegBuffer};
+use bvr_core::{LineSet, SegBuffer, matches::CompositeStrategy};
 use ratatui::style::Color;
 use regex::bytes::Regex;
 
@@ -238,6 +238,13 @@ impl Filter {
             FilterSet::All => true,
             FilterSet::Bookmarks(_) => true,
             FilterSet::Search(lines) => lines.is_complete(),
+        }
+    }
+
+    pub(crate) fn set_color(&mut self, color: Color) {
+        match &self.data {
+            FilterSet::All | FilterSet::Bookmarks(_) => (),
+            FilterSet::Search(_) => self.color = color,
         }
     }
 }

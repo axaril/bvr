@@ -370,6 +370,25 @@ impl App {
                             let command = self.app.viewer.prompt.take();
                             self.process_shell(&command, true, pipe)
                         }
+                        InputMode::Prompt(PromptMode::FilterColor) => {
+                            self.app.viewer.mode = InputMode::Normal;
+                            let command = self.app.viewer.prompt.take();
+                            use std::str::FromStr;
+                            let color = match ratatui::style::Color::from_str(&command) {
+                                Ok(color) => color,
+                                Err(_) => {
+                                    self.app
+                                        .viewer
+                                        .status
+                                        .msg(format!("filter color: invalid color `{command}`"));
+                                    return Ok(true);
+                                }
+                            };
+                            self.app.viewer.demux_mut(|instance| {
+                                instance.set_selected_filter_color(color);
+                            });
+                            Ok(true)
+                        }
                         InputMode::Normal
                         | InputMode::Visual
                         | InputMode::Filter

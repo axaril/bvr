@@ -22,6 +22,7 @@ pub enum PromptMode {
     Command,
     Shell { pipe: bool },
     Search { escaped: bool, edit: bool },
+    FilterColor,
 }
 
 #[derive(Serialize, Deserialize, Clone, Copy)]

@@ -3,9 +3,9 @@ mod filters;
 mod viewer;
 
 use super::{
+    InputMode, PromptMode,
     actions::{Action, NormalAction},
     mouse::MouseHandler,
-    InputMode, PromptMode,
 };
 use crate::{
     app::widgets::{filters::FilterViewerWidget, viewer::LineViewerWidget},
@@ -49,6 +49,7 @@ impl<'a> Widget for StatusWidget<'a> {
                     (false, false) => " FILTER ",
                 },
             ),
+            InputMode::Prompt(PromptMode::FilterColor) => (colors::FILTER_ACCENT, " FILTER COLOR "),
             InputMode::Normal => (colors::NORMAL_ACCENT, " NORMAL "),
             InputMode::Visual => (colors::SELECT_ACCENT, " VISUAL "),
             InputMode::Filter => (colors::FILTER_ACCENT, " FILTER "),
@@ -92,9 +93,7 @@ impl<'a> Widget for StatusWidget<'a> {
             v.push(Span::raw(" to view a file").fg(colors::STATUS_BAR_TEXT));
         }
 
-        Line::from(v)
-            .style(STATUS_BAR_STYLE)
-            .render(area, buf);
+        Line::from(v).style(STATUS_BAR_STYLE).render(area, buf);
 
         if let Some(instance) = self.instance {
             if instance.is_following_output() {
@@ -158,6 +157,7 @@ impl PromptWidget<'_> {
             PromptMode::Search { .. } => Span::raw("/").fg(colors::FILTER_ACCENT),
             PromptMode::Shell { pipe: true } => Span::raw("|").fg(colors::SHELL_ACCENT),
             PromptMode::Shell { pipe: false } => Span::raw("!").fg(colors::SHELL_ACCENT),
+            PromptMode::FilterColor => Span::raw("#").fg(colors::FILTER_ACCENT),
         }
         .render(indicator_area, buf);
 
