@@ -131,6 +131,7 @@ pub fn lossy_normalize_width(v: &[u8]) -> Cow<'_, str> {
     Cow::Owned(res)
 }
 
+#[allow(dead_code)]
 pub fn wrap_text(text: &str, max_width: usize) -> Vec<String> {
     let mut lines = Vec::new();
     let mut current_line = String::new();

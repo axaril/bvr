@@ -38,7 +38,7 @@ struct BufferMap {
 }
 
 struct StreamInner {
-    segment_rx: Option<Receiver<Segment>>,
+    segment_rx: Option<Receiver<Arc<Segment>>>,
     segments: Vec<Arc<Segment>>,
 }
 
@@ -99,7 +99,7 @@ impl BufferMap {
                                 if let Some(first_segment) = segments.first() {
                                     debug_assert_eq!(first_segment.len(), segment.len())
                                 }
-                                segments.push(Arc::new(segment))
+                                segments.push(segment)
                             }
                             Err(TryRecvError::Empty) => break,
                             Err(TryRecvError::Disconnected) => {
