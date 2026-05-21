@@ -1,9 +1,9 @@
 use super::{
+    InputMode, PromptMode,
     actions::{
         Action, CommandAction, CommandJump, ConfigAction, FilterAction, NormalAction, VisualAction,
     },
     control::ViewDelta,
-    InputMode, PromptMode,
 };
 use crate::direction::Direction;
 use crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
@@ -120,6 +120,9 @@ impl Keybinding {
                         edit: true,
                     })))
                 }
+                KeyCode::Char('c') => Some(Action::SwitchMode(InputMode::Prompt(
+                    PromptMode::FilterColor,
+                ))),
                 KeyCode::Char(c @ ('u' | 'd')) => Some(Action::Filter(FilterAction::Move {
                     direction: Direction::back_if(c == 'u'),
                     select: key.modifiers.contains(KeyModifiers::SHIFT),

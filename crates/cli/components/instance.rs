@@ -8,7 +8,8 @@ use super::{
 };
 use crate::{app::control::ViewDelta, colors::ColorSelector, direction::Direction};
 use bvr_core::SegBuffer;
-use bvr_core::{matches::CompositeStrategy, Result};
+use bvr_core::{Result, matches::CompositeStrategy};
+use ratatui::prelude::Color;
 
 pub struct Instance {
     name: String,
@@ -332,5 +333,11 @@ impl Instance {
 
     pub fn link(&self) -> Option<&Path> {
         self.link.as_deref()
+    }
+
+    pub(crate) fn set_selected_filter_color(&mut self, color: Color) {
+        self.compositor
+            .selected_filter_mut()
+            .map(|filter| filter.set_color(color));
     }
 }
