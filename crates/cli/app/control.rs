@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(PartialEq, Clone, Copy, Serialize, Deserialize)]
-#[serde(tag = "mode")]
+#[derive(Debug, PartialEq, Clone, Copy, Serialize, Deserialize)]
+#[serde(tag = "mode", rename_all = "snake_case")]
 pub enum InputMode {
     Prompt(PromptMode),
     Normal,
@@ -16,8 +16,8 @@ impl InputMode {
     }
 }
 
-#[derive(PartialEq, Clone, Copy, Serialize, Deserialize)]
-#[serde(tag = "prompt")]
+#[derive(Debug, PartialEq, Clone, Copy, Serialize, Deserialize)]
+#[serde(tag = "prompt", rename_all = "snake_case")]
 pub enum PromptMode {
     Command,
     Shell { pipe: bool },
@@ -25,10 +25,10 @@ pub enum PromptMode {
     FilterColor,
 }
 
-#[derive(Serialize, Deserialize, Clone, Copy)]
-#[serde(tag = "delta")]
+#[derive(Debug, Serialize, Deserialize, Clone, Copy)]
+#[serde(tag = "type", rename_all = "snake_case")]
 pub enum ViewDelta {
-    Number(u16),
+    Number { value: u16 },
     Page,
     HalfPage,
     Boundary,

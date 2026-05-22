@@ -50,6 +50,8 @@ impl State {
         Self {
             viewer: Viewer::new(),
             keybinds: Keybinding::Hardcoded,
+            // keybinds: Keybinding::from_toml_file(Path::new("default_keybindings.toml"), false)
+            //     .unwrap(),
         }
     }
 
@@ -218,7 +220,9 @@ impl App {
                 NormalAction::SwitchActiveIndex { target_view } => {
                     self.app.viewer.mux.move_active_index(target_view)
                 }
-                NormalAction::SwitchActive(direction) => self.app.viewer.mux.move_active(direction),
+                NormalAction::SwitchActive { direction } => {
+                    self.app.viewer.mux.move_active(direction)
+                }
             },
             Action::Visual(action) => match action {
                 VisualAction::Move {
@@ -407,7 +411,7 @@ impl App {
                 }
                 CommandAction::Complete => (),
             },
-            Action::ExportFile(path) => {
+            Action::ExportFile { path } => {
                 if let Some(instance) = self.app.viewer.mux.active_mut() {
                     if let Err(err) = OpenOptions::new()
                         .create_new(true)
@@ -777,7 +781,7 @@ impl App {
                     "{}: export starting (this may take a while...)",
                     path.display()
                 ));
-                self.action_queue.push_back(Action::ExportFile(path));
+                self.action_queue.push_back(Action::ExportFile { path });
             }
             Some(cmd) => {
                 if let Ok(line_number) = cmd.parse::<usize>() {

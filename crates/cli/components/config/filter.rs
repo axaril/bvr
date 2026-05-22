@@ -131,7 +131,7 @@ impl FilterConfigApp {
 
     pub fn move_select(&mut self, dir: Direction, select: bool, delta: ViewDelta) {
         let delta = match delta {
-            ViewDelta::Number(n) => usize::from(n),
+            ViewDelta::Number { value } => usize::from(value),
             ViewDelta::Page => self.viewport.height(),
             ViewDelta::HalfPage => self.viewport.height().div_ceil(2),
             ViewDelta::Boundary => usize::MAX,

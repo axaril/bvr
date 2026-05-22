@@ -106,7 +106,7 @@ impl LineViewerWidget<'_> {
             MouseEventKind::ScrollUp | MouseEventKind::ScrollDown => {
                 Some(Action::Normal(NormalAction::PanVertical {
                     direction: Direction::back_if(event.kind == MouseEventKind::ScrollUp),
-                    delta: ViewDelta::Number(5),
+                    delta: ViewDelta::Number { value: 5 },
                     target_view: Some(self.view_index),
                 }))
             }
