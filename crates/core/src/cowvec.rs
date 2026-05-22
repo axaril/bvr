@@ -240,7 +240,7 @@ impl<T> Deref for CowVecWriter<T> {
 
 impl<T> Drop for CowVecWriter<T> {
     fn drop(&mut self) {
-        self.target.completed.store(true, Ordering::Relaxed);
+        self.target.completed.store(true, Ordering::Release);
         self.target.condvar.notify_all();
     }
 }
@@ -319,7 +319,7 @@ impl<T> CowVec<T> {
     ///
     /// When this returns true, no more elements can be added to this vector.
     pub fn is_complete(&self) -> bool {
-        self.completed.load(Ordering::Relaxed)
+        self.completed.load(Ordering::Acquire)
     }
 
     /// Blocks the calling thread until either `len() > idx` or the vector is
