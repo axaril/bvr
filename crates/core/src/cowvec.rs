@@ -905,41 +905,50 @@ mod test {
 
     #[test]
     fn test_atomic_ordering_optimization() {
+        use std::sync::{Arc, Barrier};
         use std::thread;
 
-        // Test that relaxed ordering works correctly under high contention
         let (arr, mut writer) = CowVec::<usize>::new();
+
+        // +1 for the main thread that will drop the writer.
+        let barrier = Arc::new(Barrier::new(21));
         let mut handles = Vec::new();
 
-        // Spawn many threads that rapidly check completion status
         for thread_id in 0..20 {
             let arr_clone = arr.clone();
+            let barrier_clone = barrier.clone();
             let handle = thread::spawn(move || {
-                let mut check_count = 0;
-                let start = std::time::Instant::now();
+                // Signal that this thread is running, then wait until the main
+                // thread has dropped the writer.
+                barrier_clone.wait();
 
-                // Rapidly check completion for 10ms
-                while start.elapsed() < Duration::from_millis(10) {
-                    let _ = arr_clone.is_complete();
+                // Poll until complete, giving up after 5 s to surface real bugs
+                // without hanging the test suite forever.
+                let deadline = std::time::Instant::now() + Duration::from_secs(5);
+                let mut check_count = 0usize;
+                let final_complete = loop {
+                    let complete = arr_clone.is_complete();
                     check_count += 1;
-                }
-
-                // Final check after writer should be dropped
-                thread::sleep(Duration::from_millis(5));
-                let final_complete = arr_clone.is_complete();
+                    if complete {
+                        break true;
+                    }
+                    if std::time::Instant::now() >= deadline {
+                        break false;
+                    }
+                    std::hint::spin_loop();
+                };
 
                 (thread_id, check_count, final_complete)
             });
             handles.push(handle);
         }
 
-        // Writer does some work then gets dropped
+        // Writer does some work, then waits for every worker to be scheduled
+        // before dropping, so no worker can miss the completion signal.
         for i in 0..10 {
             writer.push(i);
         }
-
-        // Small delay then drop
-        thread::sleep(Duration::from_millis(2));
+        barrier.wait();
         drop(writer);
 
         // Verify all threads eventually see completion
