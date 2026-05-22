@@ -4,7 +4,7 @@ use std::{
     ptr::NonNull,
     sync::{
         atomic::{AtomicBool, AtomicUsize, Ordering},
-        Arc,
+        Arc, Condvar, Mutex,
     },
 };
 
@@ -137,6 +137,7 @@ where
 
         unsafe { std::ptr::write(buf.ptr.as_ptr().add(len), elem) }
         buf.len.store(len + 1, Ordering::Release);
+        self.target.condvar.notify_all();
     }
 
     /// Appends all elements from a slice to the back of this collection.
@@ -155,6 +156,7 @@ where
             std::ptr::copy_nonoverlapping(elems.as_ptr(), buf.ptr.as_ptr().add(len), elems.len());
         }
         buf.len.store(len + elems.len(), Ordering::Release);
+        self.target.condvar.notify_all();
     }
 
     pub fn len(&self) -> usize {
@@ -193,7 +195,8 @@ where
 
         *new_buf.len.get_mut() = len + 1;
 
-        self.target.buf.store(Arc::new(new_buf))
+        self.target.buf.store(Arc::new(new_buf));
+        self.target.condvar.notify_all();
     }
 
     /// Reserves capacity for at least `additional` more elements to be inserted
@@ -238,6 +241,7 @@ impl<T> Deref for CowVecWriter<T> {
 impl<T> Drop for CowVecWriter<T> {
     fn drop(&mut self) {
         self.target.completed.store(true, Ordering::Relaxed);
+        self.target.condvar.notify_all();
     }
 }
 
@@ -254,6 +258,9 @@ impl<T> Drop for CowVecWriter<T> {
 pub struct CowVec<T> {
     buf: ArcSwap<RawBuf<T>>,
     completed: AtomicBool,
+    /// Used to wake threads blocked in `wait_for_index`.
+    condvar: Condvar,
+    condvar_lock: Mutex<()>,
 }
 
 impl<T> CowVec<T> {
@@ -267,6 +274,8 @@ impl<T> CowVec<T> {
         let buf = Arc::new(Self {
             buf,
             completed: AtomicBool::new(false),
+            condvar: Condvar::new(),
+            condvar_lock: Mutex::new(()),
         });
         (buf.clone(), CowVecWriter { target: buf })
     }
@@ -283,6 +292,8 @@ impl<T> CowVec<T> {
         let buf = Arc::new(Self {
             buf,
             completed: AtomicBool::new(false),
+            condvar: Condvar::new(),
+            condvar_lock: Mutex::new(()),
         });
         (buf.clone(), CowVecWriter { target: buf })
     }
@@ -309,6 +320,24 @@ impl<T> CowVec<T> {
     /// When this returns true, no more elements can be added to this vector.
     pub fn is_complete(&self) -> bool {
         self.completed.load(Ordering::Relaxed)
+    }
+
+    /// Blocks the calling thread until either `len() > idx` or the vector is
+    /// complete (i.e. the writer has been dropped). Returns immediately if the
+    /// condition is already satisfied.
+    pub fn wait_for_index(&self, idx: usize) {
+        // Fast path: avoid acquiring the lock if data is already available.
+        if self.is_complete() || self.len() > idx {
+            return;
+        }
+        // Acquire the condvar lock and re-check the condition inside
+        // `wait_while` to avoid a lost-wakeup between the fast-path check
+        // and actually parking the thread.
+        let guard = self.condvar_lock.lock().unwrap();
+        drop(
+            self.condvar
+                .wait_while(guard, |_| !self.is_complete() && self.len() <= idx),
+        );
     }
 
     #[inline(always)]
@@ -364,6 +393,8 @@ impl<T: Copy> From<Vec<T>> for CowVec<T> {
         Self {
             buf: ArcSwap::from_pointee(RawBuf::new(NonNull::new(ptr).unwrap(), len, cap)),
             completed: AtomicBool::new(true), // Vec is already complete, no writer exists
+            condvar: Condvar::new(),
+            condvar_lock: Mutex::new(()),
         }
     }
 }
