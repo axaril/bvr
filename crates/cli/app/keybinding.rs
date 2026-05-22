@@ -383,6 +383,7 @@ pub enum Keybinding {
     /// The keybindings are hardcoded into the program.
     Hardcoded,
     /// Custom keybindings loaded from a configuration file.
+    #[allow(dead_code)]
     Custom {
         config: KeybindingConfig,
         /// Fall back to hardcoded bindings if custom binding not found.
@@ -398,11 +399,13 @@ impl Default for Keybinding {
 
 impl Keybinding {
     /// Create a new custom keybinding handler from a config.
+    #[allow(dead_code)]
     pub fn custom(config: KeybindingConfig, fallback: bool) -> Self {
         Keybinding::Custom { config, fallback }
     }
 
     /// Load custom keybindings from a TOML file.
+    #[allow(dead_code)]
     pub fn from_toml_file(path: &Path, fallback: bool) -> Result<Self, KeybindingLoadError> {
         let config = KeybindingConfig::from_toml_file(path)?;
         Ok(Keybinding::Custom { config, fallback })
