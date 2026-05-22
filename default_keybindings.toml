@@ -1,0 +1,118 @@
+# BVR Default Keybindings Configuration
+#
+# Key format: "modifier-key" where modifier can be ctrl, alt, shift
+# Examples: "ctrl-c", "shift-up", "alt-f1", "g", "enter"
+#
+# Special keys: backspace, enter, left, right, up, down, home, end,
+#               pageup, pagedown, tab, backtab, delete, insert, esc, space, f1-f24
+#
+# Note: Some keybindings with dynamic behavior (like checking shift state
+# for selection) cannot be fully represented in static TOML configuration.
+# Those bindings are marked with comments.
+
+[global]
+"ctrl-c" = { action = "exit" }
+"esc" = { action = "switch_mode", mode = "normal" }
+"shift-:" = { action = "switch_mode", mode = "prompt", prompt = "command" }
+"/" = { action = "switch_mode", mode = "prompt", prompt = "search", escaped = false, edit = false }
+"!" = { action = "switch_mode", mode = "prompt", prompt = "shell", pipe = false }
+"f" = { action = "switch_mode", mode = "filter" }
+"v" = { action = "switch_mode", mode = "visual" }
+"tab" = { action = "normal", type = "switch_active", direction = "next" }
+"backtab" = { action = "normal", type = "switch_active", direction = "back" }
+"1" = { action = "normal", type = "switch_active_index", target_view = 0 }
+"2" = { action = "normal", type = "switch_active_index", target_view = 1 }
+"3" = { action = "normal", type = "switch_active_index", target_view = 2 }
+"4" = { action = "normal", type = "switch_active_index", target_view = 3 }
+"5" = { action = "normal", type = "switch_active_index", target_view = 4 }
+"6" = { action = "normal", type = "switch_active_index", target_view = 5 }
+"7" = { action = "normal", type = "switch_active_index", target_view = 6 }
+"8" = { action = "normal", type = "switch_active_index", target_view = 7 }
+"9" = { action = "normal", type = "switch_active_index", target_view = 8 }
+
+[normal]
+"up" = { action = "normal", type = "pan_vertical", direction = "back", delta = { type = "number", value = 1 } }
+"down" = { action = "normal", type = "pan_vertical", direction = "next", delta = { type = "number", value = 1 } }
+"left" = { action = "normal", type = "pan_horizontal", direction = "back", delta = { type = "number", value = 1 } }
+"right" = { action = "normal", type = "pan_horizontal", direction = "next", delta = { type = "number", value = 1 } }
+"shift-up" = { action = "normal", type = "pan_vertical", direction = "back", delta = { type = "half_page" } }
+"shift-down" = { action = "normal", type = "pan_vertical", direction = "next", delta = { type = "half_page" } }
+"shift-left" = { action = "normal", type = "pan_horizontal", direction = "back", delta = { type = "half_page" } }
+"shift-right" = { action = "normal", type = "pan_horizontal", direction = "next", delta = { type = "half_page" } }
+"u" = { action = "normal", type = "pan_vertical", direction = "back", delta = { type = "half_page" } }
+"d" = { action = "normal", type = "pan_vertical", direction = "next", delta = { type = "half_page" } }
+"pageup" = { action = "normal", type = "pan_vertical", direction = "back", delta = { type = "page" } }
+"pagedown" = { action = "normal", type = "pan_vertical", direction = "next", delta = { type = "page" } }
+"space" = { action = "normal", type = "pan_vertical", direction = "next", delta = { type = "page" } }
+"home" = { action = "normal", type = "pan_vertical", direction = "back", delta = { type = "boundary" } }
+"g" = { action = "normal", type = "pan_vertical", direction = "back", delta = { type = "boundary" } }
+"end" = { action = "normal", type = "follow_output" }
+"G" = { action = "normal", type = "follow_output" }
+"n" = { action = "normal", type = "pan_vertical", direction = "next", delta = { type = "match" } }
+"N" = { action = "normal", type = "pan_vertical", direction = "back", delta = { type = "match" } }
+
+[visual]
+"up" = { action = "visual", type = "move", direction = "back", select = false, delta = { type = "number", value = 1 } }
+"down" = { action = "visual", type = "move", direction = "next", select = false, delta = { type = "number", value = 1 } }
+"ctrl-up" = { action = "visual", type = "move", direction = "back", select = false, delta = { type = "half_page" } }
+"ctrl-down" = { action = "visual", type = "move", direction = "next", select = false, delta = { type = "half_page" } }
+"alt-up" = { action = "visual", type = "move", direction = "back", select = false, delta = { type = "half_page" } }
+"alt-down" = { action = "visual", type = "move", direction = "next", select = false, delta = { type = "half_page" } }
+"home" = { action = "visual", type = "move", direction = "back", select = false, delta = { type = "boundary" } }
+"end" = { action = "visual", type = "move", direction = "next", select = false, delta = { type = "boundary" } }
+"pageup" = { action = "visual", type = "move", direction = "back", select = false, delta = { type = "page" } }
+"pagedown" = { action = "visual", type = "move", direction = "next", select = false, delta = { type = "page" } }
+"n" = { action = "visual", type = "move", direction = "next", select = false, delta = { type = "match" } }
+"N" = { action = "visual", type = "move", direction = "back", select = false, delta = { type = "match" } }
+"space" = { action = "visual", type = "toggle_selected_line" }
+"enter" = { action = "visual", type = "toggle_selected_line" }
+
+[filter]
+"w" = { action = "filter", type = "displace", direction = "back", delta = { type = "number", value = 1 } }
+"s" = { action = "filter", type = "displace", direction = "next", delta = { type = "number", value = 1 } }
+"up" = { action = "filter", type = "move", direction = "back", select = false, delta = { type = "number", value = 1 } }
+"down" = { action = "filter", type = "move", direction = "next", select = false, delta = { type = "number", value = 1 } }
+"home" = { action = "filter", type = "move", direction = "back", select = false, delta = { type = "boundary" } }
+"end" = { action = "filter", type = "move", direction = "next", select = false, delta = { type = "boundary" } }
+"pageup" = { action = "filter", type = "move", direction = "back", select = false, delta = { type = "page" } }
+"pagedown" = { action = "filter", type = "move", direction = "next", select = false, delta = { type = "page" } }
+"u" = { action = "filter", type = "move", direction = "back", select = false, delta = { type = "half_page" } }
+"d" = { action = "filter", type = "move", direction = "next", select = false, delta = { type = "half_page" } }
+"/" = { action = "switch_mode", mode = "prompt", prompt = "search", escaped = false, edit = true }
+"c" = { action = "switch_mode", mode = "prompt", prompt = "filter_color" }
+"space" = { action = "filter", type = "toggle_selected_filter" }
+"enter" = { action = "filter", type = "toggle_selected_filter" }
+"backspace" = { action = "filter", type = "remove_selected_filter" }
+
+[config]
+"up" = { action = "config", type = "move", direction = "back", select = false, delta = { type = "number", value = 1 } }
+"down" = { action = "config", type = "move", direction = "next", select = false, delta = { type = "number", value = 1 } }
+"home" = { action = "config", type = "move", direction = "back", select = false, delta = { type = "boundary" } }
+"end" = { action = "config", type = "move", direction = "next", select = false, delta = { type = "boundary" } }
+"pageup" = { action = "config", type = "move", direction = "back", select = false, delta = { type = "page" } }
+"pagedown" = { action = "config", type = "move", direction = "next", select = false, delta = { type = "page" } }
+"u" = { action = "config", type = "move", direction = "back", select = false, delta = { type = "half_page" } }
+"d" = { action = "config", type = "move", direction = "next", select = false, delta = { type = "half_page" } }
+"enter" = { action = "config", type = "load_selected_filter" }
+"backspace" = { action = "config", type = "remove_selected_filter" }
+
+[prompt]
+"enter" = { action = "command", type = "submit" }
+"left" = { action = "command", type = "move", direction = "back", select = false, jump = { type = "none" } }
+"right" = { action = "command", type = "move", direction = "next", select = false, jump = { type = "none" } }
+"ctrl-left" = { action = "command", type = "move", direction = "back", select = false, jump = { type = "word" } }
+"ctrl-right" = { action = "command", type = "move", direction = "next", select = false, jump = { type = "word" } }
+"alt-left" = { action = "command", type = "move", direction = "back", select = false, jump = { type = "word" } }
+"alt-right" = { action = "command", type = "move", direction = "next", select = false, jump = { type = "word" } }
+"home" = { action = "command", type = "move", direction = "back", select = false, jump = { type = "boundary" } }
+"end" = { action = "command", type = "move", direction = "next", select = false, jump = { type = "boundary" } }
+"ctrl-a" = { action = "command", type = "move", direction = "back", select = false, jump = { type = "boundary" } }
+"ctrl-e" = { action = "command", type = "move", direction = "next", select = false, jump = { type = "boundary" } }
+"alt-b" = { action = "command", type = "move", direction = "back", select = false, jump = { type = "word" } }
+"alt-f" = { action = "command", type = "move", direction = "next", select = false, jump = { type = "word" } }
+"up" = { action = "command", type = "history", direction = "back" }
+"down" = { action = "command", type = "history", direction = "next" }
+"backspace" = { action = "command", type = "backspace" }
+"tab" = { action = "command", type = "complete" }
+# Note: Character typing is handled specially and cannot be configured via TOML
+# Note: ctrl-r for toggling regex escape in search mode is handled specially

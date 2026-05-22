@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum Direction {
     Back,
     Next,

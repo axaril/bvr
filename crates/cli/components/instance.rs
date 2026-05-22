@@ -124,7 +124,7 @@ impl Instance {
 
     pub fn move_viewport_vertical(&mut self, dir: Direction, delta: ViewDelta) {
         let delta = match delta {
-            ViewDelta::Number(n) => usize::from(n),
+            ViewDelta::Number { value } => usize::from(value),
             ViewDelta::Page => self.view.viewport().height(),
             ViewDelta::HalfPage => self.view.viewport().height().div_ceil(2),
             ViewDelta::Boundary => {
@@ -156,7 +156,7 @@ impl Instance {
 
     pub fn move_viewport_horizontal(&mut self, dir: Direction, delta: ViewDelta) {
         let delta = match delta {
-            ViewDelta::Number(n) => usize::from(n),
+            ViewDelta::Number { value } => usize::from(value),
             ViewDelta::Page => self.viewport().width(),
             ViewDelta::HalfPage => self.viewport().width().div_ceil(2),
             _ => 0,
@@ -170,7 +170,7 @@ impl Instance {
 
     pub fn move_select(&mut self, dir: Direction, select: bool, delta: ViewDelta) {
         let compute_delta = |i: usize| match delta {
-            ViewDelta::Number(n) => usize::from(n),
+            ViewDelta::Number { value } => usize::from(value),
             ViewDelta::Page => self.view.viewport().height(),
             ViewDelta::HalfPage => self.view.viewport().height().div_ceil(2),
             ViewDelta::Boundary => usize::MAX,

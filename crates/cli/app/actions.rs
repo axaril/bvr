@@ -5,20 +5,21 @@ use serde::{Deserialize, Serialize};
 use super::{InputMode, control::ViewDelta};
 use crate::direction::Direction;
 
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "action", rename_all = "snake_case")]
 pub enum Action {
     Exit,
     SwitchMode(InputMode),
-    Command(CommandAction),
     Normal(NormalAction),
     Visual(VisualAction),
     Filter(FilterAction),
     Config(ConfigAction),
-    ExportFile(PathBuf),
+    Command(CommandAction),
+    ExportFile { path: PathBuf },
 }
 
-#[derive(Serialize, Deserialize)]
-#[serde(tag = "type")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
 pub enum NormalAction {
     PanVertical {
         direction: Direction,
@@ -31,14 +32,16 @@ pub enum NormalAction {
         target_view: Option<usize>,
     },
     FollowOutput,
-    SwitchActive(Direction),
+    SwitchActive {
+        direction: Direction,
+    },
     SwitchActiveIndex {
         target_view: usize,
     },
 }
 
-#[derive(Serialize, Deserialize)]
-#[serde(tag = "type")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
 pub enum VisualAction {
     Move {
         direction: Direction,
@@ -52,8 +55,8 @@ pub enum VisualAction {
     },
 }
 
-#[derive(Serialize, Deserialize)]
-#[serde(tag = "type")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
 pub enum FilterAction {
     Move {
         direction: Direction,
@@ -72,8 +75,8 @@ pub enum FilterAction {
     },
 }
 
-#[derive(Serialize, Deserialize)]
-#[serde(tag = "type")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
 pub enum ConfigAction {
     Move {
         direction: Direction,
@@ -84,8 +87,8 @@ pub enum ConfigAction {
     RemoveSelectedFilter,
 }
 
-#[derive(Serialize, Deserialize)]
-#[serde(tag = "type")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
 pub enum CommandAction {
     Move {
         direction: Direction,
@@ -106,8 +109,8 @@ pub enum CommandAction {
     Complete,
 }
 
-#[derive(Serialize, Deserialize, Clone, Copy)]
-#[serde(tag = "type")]
+#[derive(Debug, Serialize, Deserialize, Clone, Copy)]
+#[serde(tag = "type", rename_all = "snake_case")]
 pub enum CommandJump {
     Word,
     Boundary,
