@@ -441,7 +441,8 @@ impl ContiguousSegmentIterator {
                 None if self.index.is_complete()
                     && curr_line_seg_end == curr_line_seg_start + 1 =>
                 {
-                    let range = seg_first.translate_inner_data_range(curr_line_data_start, curr_line_data_end);
+                    let range = seg_first
+                        .translate_inner_data_range(curr_line_data_start, curr_line_data_end);
                     let segment = self.imm_seg.insert(seg_first);
                     Some(ContiguousSegment {
                         index: &self.index,

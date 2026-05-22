@@ -33,7 +33,7 @@ impl Viewport {
         self.width
     }
 
-    pub fn fit_view(&mut self, height: usize, width: usize) {
+    pub fn fit(&mut self, height: usize, width: usize) {
         self.height = height;
         self.width = width;
     }

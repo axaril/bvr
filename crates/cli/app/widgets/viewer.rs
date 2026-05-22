@@ -54,9 +54,9 @@ impl LineViewerWidget<'_> {
 
         let cursor_state = self.instance.cursor().state();
 
-        let view = self
-            .instance
-            .update_and_view(area.height as usize, area.width as usize);
+        self.instance
+            .update_viewport(area.height as usize, area.width as usize);
+        let view = self.instance.view();
 
         (area.y..area.bottom())
             .zip(view.map(Some).chain(std::iter::repeat(None)))
@@ -203,7 +203,10 @@ impl ViewerLineWidget<'_> {
         let data = {
             let data = line.data;
             let mut chars = data.grapheme_indices(true);
-            let start = chars.nth(self.start).map(|(idx, _)| idx).unwrap_or(data.len());
+            let start = chars
+                .nth(self.start)
+                .map(|(idx, _)| idx)
+                .unwrap_or(data.len());
             let end = chars
                 .nth(data_chunk.width as usize)
                 .map(|(idx, _)| idx)

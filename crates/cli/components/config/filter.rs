@@ -8,7 +8,7 @@ use crate::{
     direction::Direction,
 };
 
-use super::{storage_dir_create, APP_ID, FILTER_FILE};
+use super::{APP_ID, FILTER_FILE, storage_dir_create};
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::{cell::OnceCell, path::PathBuf};
@@ -116,13 +116,12 @@ impl FilterConfigApp {
         })
     }
 
-    pub fn update_and_filter_view(
-        &mut self,
-        viewport_height: usize,
-    ) -> impl Iterator<Item = (usize, &FilterExportSet)> {
-        self.viewport.fit_view(viewport_height, 0);
+    pub fn update_viewport(&mut self, viewport_height: usize) {
+        self.viewport.fit(viewport_height, 0);
         self.viewport.clamp(self.filters().len());
+    }
 
+    pub fn view(&self) -> impl Iterator<Item = (usize, &FilterExportSet)> {
         self.filters()
             .iter()
             .enumerate()

@@ -63,8 +63,8 @@ impl PromptApp {
         &self.viewport
     }
 
-    pub fn view_and_update(&mut self, viewport_width: usize) -> &str {
-        self.viewport.fit_view(1, viewport_width);
+    pub fn update_viewport(&mut self, viewport_width: usize) {
+        self.viewport.fit(1, viewport_width);
         match self.cursor.state() {
             Cursor::Singleton(i)
             | Cursor::Selection(i, _, super::cursor::SelectionOrigin::Left)
@@ -72,7 +72,6 @@ impl PromptApp {
                 self.viewport.jump_horizontally_to(i);
             }
         }
-        self.buf()
     }
 
     pub fn move_cursor(&mut self, direction: Direction, movement: PromptMovement) {

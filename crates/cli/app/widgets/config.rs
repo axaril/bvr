@@ -37,7 +37,8 @@ impl ConfigViewerWidget<'_> {
 
             let cursor_state = self.app.cursor().state();
 
-            let view = self.app.update_and_filter_view(left_chunk.height as usize);
+            self.app.update_viewport(left_chunk.height as usize);
+            let view = self.app.view();
 
             (left_chunk.y..left_chunk.bottom())
                 .zip(view)
