@@ -91,8 +91,10 @@ impl ViewCache {
     fn push_back(&mut self, index: usize, buf: &SegBuffer) -> bool {
         if let Some(line) = self.get_cached_line(index, buf) {
             self.cache.push_back(line);
+            true
+        } else {
+            false
         }
-        true
     }
 
     pub fn cache_view(
