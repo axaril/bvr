@@ -7,7 +7,7 @@ mod text;
 use anyhow::Result;
 use app::State;
 use clap::Parser;
-use ratatui::{prelude::CrosstermBackend, Terminal};
+use ratatui::{Terminal, prelude::CrosstermBackend};
 use std::{io::IsTerminal, path::PathBuf};
 
 use crate::app::App;
@@ -32,7 +32,8 @@ fn main() -> Result<()> {
     }
 
     if !std::io::stdin().is_terminal() {
-        state.viewer_mut()
+        state
+            .viewer_mut()
             .open_stream(String::from("Pipe Stream"), Box::new(std::io::stdin()))?;
     }
 

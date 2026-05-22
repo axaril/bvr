@@ -4,7 +4,10 @@ use super::super::{
 };
 use crate::{
     colors,
-    components::{cursor::Cursor, filters::Filter, instance::Instance},
+    components::{
+        cursor::Cursor,
+        filters::{Compositor, Filter},
+    },
 };
 use bitflags::bitflags;
 use crossterm::event::MouseEventKind;
@@ -13,7 +16,7 @@ use std::sync::OnceLock;
 
 pub struct FilterViewerWidget<'a> {
     pub(super) view_index: usize,
-    pub(super) instance: &'a mut Instance,
+    pub(super) compositor: &'a mut Compositor,
 }
 
 impl FilterViewerWidget<'_> {
@@ -23,12 +26,10 @@ impl FilterViewerWidget<'_> {
             .get_or_init(|| Block::new().bg(colors::STATUS_BAR))
             .render(area, buf);
 
-        let cursor_state = self.instance.compositor_mut().cursor().state();
+        let cursor_state = self.compositor.cursor().state();
 
-        let view = self
-            .instance
-            .compositor_mut()
-            .update_and_filter_view(area.height as usize);
+        self.compositor.update_viewport(area.height as usize);
+        let view = self.compositor.view();
 
         (area.y..area.bottom())
             .zip(view)

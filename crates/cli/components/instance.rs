@@ -81,16 +81,12 @@ impl Instance {
             .and_then(|ln| self.view.composite().find(ln))
     }
 
-    pub fn update_and_view(
-        &mut self,
-        viewport_height: usize,
-        viewport_width: usize,
-    ) -> impl Iterator<Item = &CachedLine> {
-        self.view
-            .viewport_mut()
-            .fit_view(viewport_height, viewport_width);
+    pub fn update_viewport(&mut self, height: usize, width: usize) {
+        self.view.viewport_mut().fit(height, width);
         self.view.set_end_index(self.visible_line_count());
+    }
 
+    pub fn view(&mut self) -> impl Iterator<Item = &CachedLine> {
         self.view.cache_view(&self.buf, Some(&self.compositor))
     }
 

@@ -13,6 +13,7 @@ use crate::{
     components::{
         config::filter::FilterConfigApp,
         cursor::{Cursor, SelectionOrigin},
+        filters::Compositor,
         instance::Instance,
         mux::{MultiplexerApp, MultiplexerMode},
         prompt::PromptApp,
@@ -124,7 +125,7 @@ impl<'a> Widget for StatusWidget<'a> {
 }
 
 pub struct PromptWidget<'a> {
-    pub inner: &'a mut PromptApp,
+    pub prompt: &'a mut PromptApp,
     pub mode: InputMode,
     pub cursor: &'a mut Option<(u16, u16)>,
 }
@@ -161,9 +162,10 @@ impl PromptWidget<'_> {
         }
         .render(indicator_area, buf);
 
-        let cursor = self.inner.cursor();
-        let left = self.inner.viewport().left();
-        let cmd_buf = self.inner.view_and_update(usize::from(area.width));
+        let cursor = self.prompt.cursor();
+        let left = self.prompt.viewport().left();
+        self.prompt.update_viewport(usize::from(area.width));
+        let cmd_buf = self.prompt.buf();
 
         Paragraph::new(cmd_buf)
             .bg(colors::BG)
@@ -257,13 +259,13 @@ impl MultiplexerPane<'_> {
         area: &mut Rect,
         buf: &mut Buffer,
         view_index: usize,
-        instance: &mut Instance,
+        compositor: &mut Compositor,
         handler: &mut MouseHandler,
     ) {
         Self::filter_area(area, |area| {
             FilterViewerWidget {
                 view_index,
-                instance,
+                compositor,
             }
             .render(area, buf, handler);
         });
@@ -271,7 +273,13 @@ impl MultiplexerPane<'_> {
 
     pub fn render(self, mut area: Rect, buf: &mut Buffer, handler: &mut MouseHandler) {
         if self.show_filter_on_pane {
-            Self::render_filter_pane(&mut area, buf, self.view_index, self.instance, handler);
+            Self::render_filter_pane(
+                &mut area,
+                buf,
+                self.view_index,
+                self.instance.compositor_mut(),
+                handler,
+            );
         }
 
         LineViewerWidget {
@@ -334,7 +342,7 @@ impl MultiplexerWidget<'_> {
                 &mut area,
                 buf,
                 active,
-                self.mux.active_mut().unwrap(),
+                self.mux.active_mut().unwrap().compositor_mut(),
                 handler,
             );
         }

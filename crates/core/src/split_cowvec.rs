@@ -2,7 +2,6 @@ use std::sync::{Arc, Mutex};
 
 use crate::cowvec::{CowVec, CowVecWriter};
 
-
 /// An exclusive writer to a `SplitCowVec<T>`.
 ///
 /// This writer manages multiple `CowVec<T>` segments, creating a new segment
@@ -49,7 +48,12 @@ where
 
     /// Returns the total number of elements written so far.
     pub fn len(&self) -> usize {
-        self.segments.lock().unwrap().iter().map(|seg| seg.len()).sum()
+        self.segments
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|seg| seg.len())
+            .sum()
     }
 
     /// Returns true if no elements have been written.
@@ -97,12 +101,7 @@ impl<T> SplitCowVec<T> {
             current: None,
         };
 
-        (
-            SplitCowVec {
-                segments: segments,
-            },
-            writer,
-        )
+        (SplitCowVec { segments: segments }, writer)
     }
 
     /// Constructs a new, empty `SplitCowVec<T>` with default configuration (1024 elements per segment).
@@ -112,7 +111,12 @@ impl<T> SplitCowVec<T> {
 
     /// Returns the total number of elements across all segments.
     pub fn len(&self) -> usize {
-        self.segments.lock().unwrap().iter().map(|seg| seg.len()).sum()
+        self.segments
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|seg| seg.len())
+            .sum()
     }
 
     /// Returns the number of segments.
@@ -130,7 +134,13 @@ impl<T> SplitCowVec<T> {
     /// This snapshot pins all internal buffers, ensuring a consistent view
     /// across all segments even if writes occur after the snapshot is taken.
     pub fn snapshot(&self) -> SplitCowVecSnapshot<T> {
-        let snapshots = self.segments.lock().unwrap().iter().map(|seg| seg.snapshot()).collect();
+        let snapshots = self
+            .segments
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|seg| seg.snapshot())
+            .collect();
 
         SplitCowVecSnapshot { snapshots }
     }

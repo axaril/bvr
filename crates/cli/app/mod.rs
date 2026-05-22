@@ -968,7 +968,7 @@ impl Viewer {
         let mut cursor = None;
         PromptWidget {
             mode: self.mode,
-            inner: &mut self.prompt,
+            prompt: &mut self.prompt,
             cursor: &mut cursor,
         }
         .render(cmd_chunk, f.buffer_mut());

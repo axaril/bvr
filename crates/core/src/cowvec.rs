@@ -783,9 +783,18 @@ mod test {
         // Wait for all readers and verify results
         for handle in handles {
             let (thread_id, changes, final_complete) = handle.join().unwrap();
-            assert!(final_complete, "Thread {} should see final completion", thread_id);
+            assert!(
+                final_complete,
+                "Thread {} should see final completion",
+                thread_id
+            );
             // Each thread should see at most one change (false -> true)
-            assert!(changes <= 1, "Thread {} saw {} completion changes", thread_id, changes);
+            assert!(
+                changes <= 1,
+                "Thread {} saw {} completion changes",
+                thread_id,
+                changes
+            );
         }
 
         assert!(arr.is_complete());
@@ -937,7 +946,11 @@ mod test {
         for handle in handles {
             let (thread_id, check_count, final_complete) = handle.join().unwrap();
             assert!(final_complete, "Thread {} should see completion", thread_id);
-            assert!(check_count > 0, "Thread {} should have performed checks", thread_id);
+            assert!(
+                check_count > 0,
+                "Thread {} should have performed checks",
+                thread_id
+            );
         }
 
         assert!(arr.is_complete());
@@ -965,7 +978,11 @@ mod test {
                     for i in 0..len {
                         if let Some(value) = arr_clone.get(i) {
                             // Verify data integrity: each element should equal its index
-                            assert_eq!(value, i, "Thread {} saw corrupted data at index {}", thread_id, i);
+                            assert_eq!(
+                                value, i,
+                                "Thread {} saw corrupted data at index {}",
+                                thread_id, i
+                            );
                             successful_reads += 1;
                         }
                     }
@@ -991,7 +1008,11 @@ mod test {
         let mut total_reads = 0;
         for handle in handles {
             let (thread_id, reads) = handle.join().unwrap();
-            assert!(reads > 0, "Thread {} should have performed successful reads", thread_id);
+            assert!(
+                reads > 0,
+                "Thread {} should have performed successful reads",
+                thread_id
+            );
             total_reads += reads;
         }
 

@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
-use super::{control::ViewDelta, InputMode};
+use super::{InputMode, control::ViewDelta};
 use crate::direction::Direction;
 
 #[derive(Serialize, Deserialize)]

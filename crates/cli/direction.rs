@@ -9,10 +9,6 @@ pub enum Direction {
 impl Direction {
     #[inline(always)]
     pub fn back_if(condition: bool) -> Self {
-        if condition {
-            Self::Back
-        } else {
-            Self::Next
-        }
+        if condition { Self::Back } else { Self::Next }
     }
 }
