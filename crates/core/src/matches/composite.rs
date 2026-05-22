@@ -6,15 +6,8 @@ struct QueueMatch {
 }
 
 impl QueueMatch {
-    fn is_ready(&self) -> bool {
-        // We reached the end of this queue but its not complete
-        self.matches.is_complete() || self.index < self.matches.len()
-    }
-
     fn peek(&self) -> Option<usize> {
-        while !self.is_ready() {
-            std::thread::park_timeout(std::time::Duration::from_millis(100));
-        }
+        self.matches.wait_for_index(self.index);
         self.matches.get(self.index)
     }
 }

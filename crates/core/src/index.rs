@@ -365,4 +365,13 @@ impl LineIndex {
     pub fn is_complete(&self) -> bool {
         self.lower.is_complete()
     }
+
+    /// Blocks the calling thread until line `line` has been fully indexed
+    /// (i.e. its end boundary is known) or the index is complete.
+    ///
+    /// Internally, each line boundary is stored as one entry in `lower`, so
+    /// line `N` is ready when `lower.len() > N + 1`.
+    pub fn wait_for_line(&self, line: usize) {
+        self.lower.wait_for_index(line + 1);
+    }
 }

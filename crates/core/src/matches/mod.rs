@@ -42,7 +42,7 @@ impl LineMatchWriter {
             } else if iter.index().is_complete() {
                 break;
             } else {
-                std::thread::park_timeout(std::time::Duration::from_millis(100));
+                iter.index().wait_for_line(iter.remaining_range().start);
             }
         }
         Ok(())
@@ -131,6 +131,16 @@ impl LineSet {
         match self {
             LineSet::All { buf } => buf.is_complete(),
             LineSet::Dynamic { buf, .. } => buf.is_complete(),
+        }
+    }
+
+    /// Blocks until `get(idx)` would return `Some`, or the set is complete.
+    ///
+    /// For `LineSet::All`, this is always satisfied immediately.
+    pub fn wait_for_index(&self, idx: usize) {
+        match self {
+            LineSet::All { .. } => {}
+            LineSet::Dynamic { buf, .. } => buf.wait_for_index(idx),
         }
     }
 
