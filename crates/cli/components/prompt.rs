@@ -86,6 +86,8 @@ impl PromptApp {
     }
 
     pub fn move_cursor(&mut self, direction: Direction, movement: PromptMovement) {
+        self.clear_completion_cycle();
+
         let buf = if self.index < self.history.len() {
             &self.history[self.index]
         } else {
