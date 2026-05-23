@@ -36,17 +36,28 @@ impl<'a> RegexHighlighter<'a> {
 
     pub fn highlight(mut self) -> Line<'a> {
         let len = self.bytes.len();
+        let mut old_i = self.i;
         while self.i < len {
-            let ch = self.input[self.i..].chars().next().unwrap();
-            let ch_len = ch.len_utf8();
             if self.in_class {
-                self.step_in_class(ch, ch_len);
+                self.step_in_class();
             } else {
-                self.step_outside_class(ch, ch_len);
+                self.step_outside_class();
             }
+
+            // Ensure we are making forward progress
+            assert!(
+                self.i > old_i,
+                "highlighter did not advance at position {}",
+                self.i
+            );
+            old_i = self.i;
         }
         self.flush_lit(len);
         self.finalize()
+    }
+
+    fn peek(&self) -> char {
+        self.input[self.i..].chars().next().unwrap()
     }
 
     /// Flush any accumulated literal characters as an unstyled span.
@@ -59,13 +70,13 @@ impl<'a> RegexHighlighter<'a> {
     }
 
     /// Advance one character while inside a `[…]` character class.
-    fn step_in_class(&mut self, ch: char, ch_len: usize) {
-        let input = self.input; // Copy — does not borrow self
+    fn step_in_class(&mut self) {
+        let input = self.input;
         let bytes = self.bytes;
         let i = self.i;
         let len = bytes.len();
 
-        match ch {
+        match self.peek() {
             '\\' if i + 1 < len => {
                 self.flush_lit(i);
                 let nc = input[i + 1..].chars().next().unwrap();
@@ -83,21 +94,21 @@ impl<'a> RegexHighlighter<'a> {
                 self.class_negation_idx = None;
                 self.i += 1;
             }
-            _ => {
+            ch => {
                 self.lit_start.get_or_insert(i);
-                self.i += ch_len;
+                self.i += ch.len_utf8();
             }
         }
     }
 
     /// Advance one character while outside any character class.
-    fn step_outside_class(&mut self, ch: char, ch_len: usize) {
-        let input = self.input; // Copy — does not borrow self
+    fn step_outside_class(&mut self) {
+        let input = self.input;
         let bytes = self.bytes;
         let i = self.i;
         let len = bytes.len();
 
-        match ch {
+        match self.peek() {
             '\\' if i + 1 < len => {
                 self.flush_lit(i);
                 let nc = input[i + 1..].chars().next().unwrap();
@@ -185,9 +196,9 @@ impl<'a> RegexHighlighter<'a> {
                     .push(Span::raw(&input[i..i + 1]).fg(colors::regex::META));
                 self.i += 1;
             }
-            _ => {
+            ch => {
                 self.lit_start.get_or_insert(i);
-                self.i += ch_len;
+                self.i += ch.len_utf8();
             }
         }
     }
