@@ -1,11 +1,11 @@
 mod actions;
 mod command;
 pub mod control;
+mod help;
 mod keybinding;
 mod mouse;
 mod terminal;
 mod widgets;
-mod help;
 
 use self::{
     actions::{Action, CommandAction, NormalAction, VisualAction},
@@ -15,7 +15,10 @@ use self::{
 };
 use crate::{
     app::{
-        actions::HelpAction, command::Command, terminal::{Terminal, TerminalState}, widgets::{MultiplexerWidget, PromptWidget}
+        actions::HelpAction,
+        command::Command,
+        terminal::{Terminal, TerminalState},
+        widgets::{MultiplexerWidget, PromptWidget},
     },
     components::{
         config::filter::FilterConfigApp,
@@ -34,7 +37,12 @@ use bvr_core::{SegBuffer, err::Error, index::BoxedStream, matches::CompositeStra
 use crossterm::{clipboard::CopyToClipboard, event};
 use regex::bytes::Regex;
 use std::{
-    borrow::Cow, collections::VecDeque, fs::OpenOptions, num::NonZeroUsize, path::{Path, PathBuf}, time::{Duration, Instant}
+    borrow::Cow,
+    collections::VecDeque,
+    fs::OpenOptions,
+    num::NonZeroUsize,
+    path::{Path, PathBuf},
+    time::{Duration, Instant},
 };
 
 pub struct State {
@@ -75,45 +83,134 @@ impl App {
             commands: Vec::new(),
         };
 
-        app.add_command(Command::new("help", &["h"]).set_action(Self::command_help));
-        app.add_command(Command::new("quit", &["q"]).set_action(Self::command_quit));
-        app.add_command(Command::new("mcap", &[]).set_action(Self::command_mcap));
         app.add_command(
-            Command::new("realpath", &["rp", "readlink", "rl"]).set_action(Self::command_realpath),
-        );
-        app.add_command(Command::new("pbcopy", &["pb"]).set_action(Self::command_pbcopy));
-        app.add_command(Command::new("refresh", &[]).set_action(Self::command_refresh));
-        app.add_command(Command::new("open", &["o"]).set_action(Self::command_open));
-        app.add_command(Command::new("export", &[]).set_action(Self::command_export));
-        app.add_command(Command::new("close", &["c"]).set_action(Self::command_close));
-        app.add_command(Command::new("gutter", &["g"]).set_action(Self::command_gutter));
-        app.add_command(
-            Command::new("mux", &["m"])
-                .add_subcommand(
-                    Command::new("tabs", &["t", "none"]).set_action(Self::command_mux_tabs),
-                )
-                .add_subcommand(
-                    Command::new("split", &["s", "win"]).set_action(Self::command_mux_panes),
-                )
-                .set_action(Self::command_mux),
+            Command::new("help")
+                .aliases(&["h"])
+                .description("Display all commands.")
+                .bind(Self::command_help),
         );
         app.add_command(
-            Command::new("filter", &["f", "find"])
-                .add_subcommand(Command::new("link", &[]).set_action(Self::command_filter_linked))
-                .add_subcommand(
-                    Command::new("persist", &["p"]).set_action(Self::command_filter_persist),
+            Command::new("quit")
+                .aliases(&["q"])
+                .description("Quit the application.")
+                .bind(Self::command_quit),
+        );
+        app.add_command(
+            Command::new("mcap")
+                .description("Toggle mouse capture.")
+                .bind(Self::command_mcap),
+        );
+        app.add_command(
+            Command::new("realpath")
+                .aliases(&["rp", "readlink", "rl"])
+                .description("Copy the path of the current file to the clipboard if applicable.")
+                .bind(Self::command_realpath),
+        );
+        app.add_command(
+            Command::new("pbcopy")
+                .aliases(&["pb"])
+                .description("Copy the content of the current view to the clipboard.")
+                .bind(Self::command_pbcopy),
+        );
+        app.add_command(
+            Command::new("refresh")
+                .description("Refresh the screen.")
+                .bind(Self::command_refresh),
+        );
+        app.add_command(
+            Command::new("open")
+                .aliases(&["o"])
+                .args("<path>")
+                .description("Open a file in a new tab/view.")
+                .bind(Self::command_open),
+        );
+        app.add_command(
+            Command::new("export")
+                .args("<path>")
+                .description("Export the content of the current view to a file.")
+                .bind(Self::command_export),
+        );
+        app.add_command(
+            Command::new("close")
+                .aliases(&["c"])
+                .description("Close the current tab/view.")
+                .bind(Self::command_close),
+        );
+        app.add_command(
+            Command::new("gutter")
+                .aliases(&["g"])
+                .description("Toggle the gutter line numbers.")
+                .bind(Self::command_gutter),
+        );
+        app.add_command(
+            Command::new("mux")
+                .aliases(&["m"])
+                .description("Toggle the multiplexer mode between windows or tabs.")
+                .subcommand(
+                    Command::new("tabs")
+                        .aliases(&["t", "none"])
+                        .description("Set the multiplexer to tabs mode.")
+                        .bind(Self::command_mux_tabs),
                 )
-                .add_subcommand(Command::new("copy", &["c"]).set_action(Self::command_filter_copy))
-                .add_subcommand(Command::new("save", &["s"]).set_action(Self::command_filter_save))
-                .add_subcommand(Command::new("load", &[]).set_action(Self::command_filter_load))
-                .add_subcommand(
-                    Command::new("clear", &["c"]).set_action(Self::command_filter_clear),
+                .subcommand(
+                    Command::new("split")
+                        .aliases(&["s", "win"])
+                        .description("Set the multiplexer to split window mode.")
+                        .bind(Self::command_mux_panes),
                 )
-                .add_subcommand(
-                    Command::new("union", &["u"]).set_action(Self::command_filter_union),
+                .bind(Self::command_mux),
+        );
+        app.add_command(
+            Command::new("filter")
+                .aliases(&["f", "find"])
+                .description("Commands for managing filters.")
+                .subcommand(
+                    Command::new("link")
+                        .description("Toggle whether filters are linked across all views.")
+                        .bind(Self::command_filter_linked),
                 )
-                .add_subcommand(
-                    Command::new("intersect", &["i"]).set_action(Self::command_filter_intersect),
+                .subcommand(
+                    Command::new("persist")
+                        .aliases(&["p"])
+                        .description("Toggle whether filters are persisted on shutdown and launch.")
+                        .bind(Self::command_filter_persist),
+                )
+                .subcommand(
+                    Command::new("copy")
+                        .aliases(&["c"])
+                        .args("<view index>")
+                        .description("Copy the filter set of the current view to a target view.")
+                        .bind(Self::command_filter_copy),
+                )
+                .subcommand(
+                    Command::new("save")
+                        .aliases(&["s"])
+                        .args("[name]")
+                        .description("Save the currently selected filter set to the config.")
+                        .bind(Self::command_filter_save),
+                )
+                .subcommand(
+                    Command::new("load")
+                        .description("Load a filter set from the config into the current view.")
+                        .bind(Self::command_filter_load),
+                )
+                .subcommand(
+                    Command::new("clear")
+                        .aliases(&["c"])
+                        .description("Clear all filters from the current view.")
+                        .bind(Self::command_filter_clear),
+                )
+                .subcommand(
+                    Command::new("union")
+                        .aliases(&["u"])
+                        .description("Union the selected filter sets into the current view.")
+                        .bind(Self::command_filter_union),
+                )
+                .subcommand(
+                    Command::new("intersect")
+                        .aliases(&["i"])
+                        .description("Intersect the selected filter sets into the current view.")
+                        .bind(Self::command_filter_intersect),
                 ),
         );
 
@@ -206,10 +303,7 @@ impl App {
         match action {
             Action::Exit => return Ok(false),
             Action::Help(action) => match action {
-                HelpAction::PanVertical {
-                    direction,
-                    delta,
-                } => {
+                HelpAction::PanVertical { direction, delta } => {
                     self.app.viewer.help.pan_vertically(direction, delta);
                 }
             },
