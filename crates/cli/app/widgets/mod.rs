@@ -1,4 +1,3 @@
-mod config;
 mod filters;
 mod viewer;
 
@@ -9,18 +8,16 @@ use super::{
 };
 use crate::{
     app::{
-        status,
+        config, status,
         widgets::{filters::FilterViewerWidget, viewer::LineViewerWidget},
     },
     colors,
     components::{
-        config::filter::FilterConfigApp,
         filters::Compositor,
         instance::Instance,
         mux::{MultiplexerApp, MultiplexerMode},
     },
 };
-use config::ConfigViewerWidget;
 use crossterm::event::MouseEventKind;
 use ratatui::{prelude::*, widgets::*};
 use regex::bytes::Regex;
@@ -123,7 +120,7 @@ impl MultiplexerPane<'_> {
 pub struct MultiplexerWidget<'a> {
     pub mux: &'a mut MultiplexerApp,
     pub status: &'a mut status::State,
-    pub config: &'a mut FilterConfigApp,
+    pub config: &'a mut config::State,
     pub help: &'a mut super::help::HelpManual,
     pub mode: InputMode,
     pub gutter: bool,
@@ -177,7 +174,7 @@ impl MultiplexerWidget<'_> {
 
         if self.mode == InputMode::Config {
             MultiplexerPane::filter_area(&mut area, |area| {
-                ConfigViewerWidget { app: self.config }.render(area, buf, handler);
+                config::hydrate(self.config).render(area, buf, handler);
             });
         } else if self.mode == InputMode::Help {
             MultiplexerPane::filter_area(&mut area, |area| {

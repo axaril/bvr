@@ -1,7 +1,11 @@
-pub mod filter;
+mod state;
+mod widget;
 
 use anyhow::Result;
 use std::path::PathBuf;
+
+pub use state::FilterConfigState as State;
+pub use widget::ConfigViewerWidget as Widget;
 
 const APP_ID: &str = "bvr";
 
@@ -18,4 +22,8 @@ fn storage_dir_create(app_id: &str) -> Result<PathBuf> {
     let path = storage_dir(app_id).ok_or(bvr_core::err::Error::Internal)?;
     std::fs::create_dir_all(&path)?;
     Ok(path)
+}
+
+pub fn hydrate(state: &mut State) -> Widget<'_> {
+    Widget { app: state }
 }

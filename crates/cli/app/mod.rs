@@ -9,6 +9,7 @@ mod widgets;
 
 mod prompt;
 mod status;
+mod config;
 
 use self::{
     actions::{Action, CommandAction, NormalAction, VisualAction},
@@ -24,7 +25,6 @@ use crate::{
         widgets::MultiplexerWidget,
     },
     components::{
-        config::filter::FilterConfigApp,
         cursor::Cursor,
         instance::Instance,
         mux::{MultiplexerApp, MultiplexerMode},
@@ -1166,7 +1166,7 @@ pub struct Viewer {
     status: status::State,
     prompt: prompt::State,
     regex_cache: Option<RegexCache>,
-    filter_config: FilterConfigApp,
+    filter_config: config::State,
     help: help::HelpManual,
     gutter: bool,
     linked_filters: bool,
@@ -1180,7 +1180,7 @@ impl Viewer {
             mux: MultiplexerApp::new(),
             status: status::State::new(),
             regex_cache: None,
-            filter_config: FilterConfigApp::new(),
+            filter_config: config::State::new(),
             gutter: true,
             linked_filters: false,
             help: help::HelpManual::new(),
