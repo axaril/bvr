@@ -1,14 +1,14 @@
 use super::super::mouse::MouseHandler;
 use crate::{
     colors,
-    components::{config::filter::FilterConfigApp, cursor::Cursor},
+    components::cursor::Cursor,
 };
 use bitflags::bitflags;
 use ratatui::{prelude::*, widgets::*};
 use std::sync::OnceLock;
 
 pub struct ConfigViewerWidget<'a> {
-    pub(super) app: &'a mut FilterConfigApp,
+    pub(super) app: &'a mut super::State,
 }
 
 impl ConfigViewerWidget<'_> {

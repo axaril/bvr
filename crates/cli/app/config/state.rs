@@ -13,7 +13,7 @@ use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::{cell::OnceCell, path::PathBuf};
 
-pub struct FilterConfigApp {
+pub struct FilterConfigState {
     path: Option<PathBuf>,
     state: OnceCell<LoadedFilterData>,
     viewport: Viewport,
@@ -27,7 +27,7 @@ struct LoadedFilterData {
     filters: Vec<FilterExportSet>,
 }
 
-impl FilterConfigApp {
+impl FilterConfigState {
     pub fn new() -> Self {
         Self {
             path: storage_dir_create(APP_ID)
