@@ -70,12 +70,14 @@ impl<'a> RegexHighlighter<'a> {
                 self.flush_lit(i);
                 let nc = input[i + 1..].chars().next().unwrap();
                 let end = i + 1 + nc.len_utf8();
-                self.spans.push(Span::raw(&input[i..end]).fg(colors::regex::ESCAPE));
+                self.spans
+                    .push(Span::raw(&input[i..end]).fg(colors::regex::ESCAPE));
                 self.i = end;
             }
             ']' => {
                 self.flush_lit(i);
-                self.spans.push(Span::raw(&input[i..i + 1]).fg(colors::regex::CLASS));
+                self.spans
+                    .push(Span::raw(&input[i..i + 1]).fg(colors::regex::CLASS));
                 self.in_class = false;
                 self.class_open_idx = None;
                 self.class_negation_idx = None;
@@ -100,13 +102,15 @@ impl<'a> RegexHighlighter<'a> {
                 self.flush_lit(i);
                 let nc = input[i + 1..].chars().next().unwrap();
                 let end = i + 1 + nc.len_utf8();
-                self.spans.push(Span::raw(&input[i..end]).fg(colors::regex::ESCAPE));
+                self.spans
+                    .push(Span::raw(&input[i..end]).fg(colors::regex::ESCAPE));
                 self.i = end;
             }
             '[' => {
                 self.flush_lit(i);
                 self.class_open_idx = Some(self.spans.len());
-                self.spans.push(Span::raw(&input[i..i + 1]).fg(colors::regex::CLASS));
+                self.spans
+                    .push(Span::raw(&input[i..i + 1]).fg(colors::regex::CLASS));
                 self.in_class = true;
                 self.i += 1;
                 if self.i < len && bytes[self.i] == b'^' {
@@ -133,7 +137,8 @@ impl<'a> RegexHighlighter<'a> {
                     self.spans.push(Span::raw(&input[i..i + 1]).fg(color));
                 } else {
                     // Unmatched `)` — no opening paren
-                    self.spans.push(Span::raw(&input[i..i + 1]).bg(colors::ERROR));
+                    self.spans
+                        .push(Span::raw(&input[i..i + 1]).bg(colors::ERROR));
                 }
                 self.i += 1;
             }

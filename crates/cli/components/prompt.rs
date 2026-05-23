@@ -181,7 +181,8 @@ impl PromptApp {
                 let index = cycle.index;
                 format!("{}{} ", cycle.prefix, cycle.candidates[index])
             })
-            .map(|buf| self.set_current(buf)).is_some()
+            .map(|buf| self.set_current(buf))
+            .is_some()
     }
 
     pub fn enter_char(&mut self, input: char) {
