@@ -7,6 +7,8 @@ mod mouse;
 mod terminal;
 mod widgets;
 
+mod status;
+
 use self::{
     actions::{Action, CommandAction, NormalAction, VisualAction},
     control::{InputMode, PromptMode},
@@ -26,7 +28,6 @@ use crate::{
         instance::Instance,
         mux::{MultiplexerApp, MultiplexerMode},
         prompt::{self, PromptApp, PromptMovement},
-        status::StatusApp,
     },
     direction::Direction,
     regex_compile,
@@ -1162,7 +1163,7 @@ struct RegexCache {
 pub struct Viewer {
     mode: InputMode,
     mux: MultiplexerApp,
-    status: StatusApp,
+    status: status::State,
     prompt: PromptApp,
     regex_cache: Option<RegexCache>,
     filter_config: FilterConfigApp,
@@ -1177,7 +1178,7 @@ impl Viewer {
             mode: InputMode::Normal,
             prompt: PromptApp::new(),
             mux: MultiplexerApp::new(),
-            status: StatusApp::new(),
+            status: status::State::new(),
             regex_cache: None,
             filter_config: FilterConfigApp::new(),
             gutter: true,

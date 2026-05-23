@@ -4,12 +4,12 @@ use std::{
     time::{Duration, Instant},
 };
 
-pub struct StatusApp {
+pub struct StatusState {
     message: String,
     timestamp: Option<(Instant, Duration)>,
 }
 
-impl StatusApp {
+impl StatusState {
     pub const fn new() -> Self {
         Self {
             message: String::new(),
