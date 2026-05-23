@@ -56,7 +56,7 @@ impl<'a> Widget for StatusWidget<'a> {
             InputMode::Visual => (colors::SELECT_ACCENT, " VISUAL "),
             InputMode::Filter => (colors::FILTER_ACCENT, " FILTER "),
             InputMode::Config => (colors::CONFIG_ACCENT, " CONFIG "),
-            InputMode::Help => (colors::HELP_ACCENT, " HELP "),
+            InputMode::Help => (colors::COMMAND_ACCENT, " HELP "),
         };
 
         let mut v = Vec::with_capacity(16);

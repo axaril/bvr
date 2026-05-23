@@ -1,25 +1,47 @@
-use ratatui::{
-    text::{Line, Span},
-    widgets::{Paragraph, Widget as _},
-};
+use ratatui::{prelude::*, widgets::Paragraph};
 
 use crate::{app::control::ViewDelta, direction::Direction};
 
 pub struct HelpManual {
     top: usize,
     height: usize,
-    content: Paragraph<'static>,
+    command_column: Paragraph<'static>,
+    description_column: Paragraph<'static>,
+    max_command_width: usize,
 }
 
 impl HelpManual {
-    fn walk_commands(lines: &mut Vec<Line<'static>>, commands: &[crate::app::Command], level: usize) {
+    fn walk_commands(
+        command_lines: &mut Vec<Line<'static>>,
+        description_lines: &mut Vec<Line<'static>>,
+        commands: &[crate::app::Command],
+        level: usize,
+        max_command_width: &mut usize,
+    ) {
         for cmd in commands {
-            lines.push(Line::from(Span::raw(format!(
-                "{}{}",
-                "   ".repeat(level),
-                cmd.name
-            ))));
-            Self::walk_commands(lines, &cmd.subcommands, level + 1);
+            let mut spans = Vec::new();
+
+            spans.push(Span::raw("   ".repeat(level)));
+            spans.push(Span::raw(cmd.name).fg(crate::colors::COMMAND_ACCENT));
+
+            if !cmd.arguments.is_empty() {
+                spans.push(Span::raw(" "));
+                spans.push(Span::raw(cmd.arguments).fg(crate::colors::TEXT_INACTIVE));
+            }
+
+            let line = Line::from(spans);
+            *max_command_width = (*max_command_width).max(line.width());
+            command_lines.push(line);
+
+            description_lines.push(Line::from(Span::raw(cmd.description)));
+
+            Self::walk_commands(
+                command_lines,
+                description_lines,
+                &cmd.subcommands,
+                level + 1,
+                max_command_width,
+            );
         }
     }
 
@@ -27,20 +49,29 @@ impl HelpManual {
         Self {
             top: 0,
             height: 0,
-            content: Paragraph::new(vec![]),
+            command_column: Paragraph::new(vec![]),
+            description_column: Paragraph::new(vec![]),
+            max_command_width: 0,
         }
     }
 
     pub fn generate(commands: &[crate::app::Command]) -> Self {
-        let mut lines = Vec::new();
-        Self::walk_commands(&mut lines, commands, 0);
+        let mut command_lines = Vec::new();
+        let mut description_lines = Vec::new();
+        let mut max_command_width = 0;
+        Self::walk_commands(&mut command_lines, &mut description_lines, commands, 0, &mut max_command_width);
 
-        let content = Paragraph::new(lines).wrap(ratatui::widgets::Wrap { trim: false });
+        let command_column =
+            Paragraph::new(command_lines).wrap(ratatui::widgets::Wrap { trim: false });
+        let description_column =
+            Paragraph::new(description_lines).wrap(ratatui::widgets::Wrap { trim: false });
 
         Self {
             top: 0,
             height: 0,
-            content,
+            command_column,
+            description_column,
+            max_command_width,
         }
     }
 
@@ -63,10 +94,27 @@ impl HelpManual {
         }
     }
 
+    fn split_left(area: Rect, left_width: u16) -> [Rect; 2] {
+        let mut left_chunk = area;
+        left_chunk.width = left_width;
+
+        let mut right_chunk = area;
+        right_chunk.x += left_width;
+        right_chunk.width = right_chunk.width.saturating_sub(left_width);
+
+        [left_chunk, right_chunk]
+    }
+
+
     pub fn render(&self, area: ratatui::prelude::Rect, buf: &mut ratatui::buffer::Buffer) {
-        self.content
+        let [command_area, description_area] = Self::split_left(area, self.max_command_width as u16 + 4);
+        self.command_column
             .clone()
             .scroll((self.top as u16, 0))
-            .render(area, buf);
+            .render(command_area, buf);
+        self.description_column
+            .clone()
+            .scroll((self.top as u16, 0))
+            .render(description_area, buf);
     }
 }
