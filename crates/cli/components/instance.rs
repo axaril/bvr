@@ -2,11 +2,10 @@ use std::path::{Path, PathBuf};
 
 use super::{
     cursor::{Cursor, CursorState, SelectionOrigin},
-    filters::{Compositor, Filter, FilterExportSet},
     viewer::{CachedLine, ViewCache},
     viewport::Viewport,
 };
-use crate::{app::control::ViewDelta, colors::ColorSelector, direction::Direction};
+use crate::{app::{control::ViewDelta, filters::{self, Filter, FilterExportSet}}, colors::ColorSelector, direction::Direction};
 use bvr_core::SegBuffer;
 use bvr_core::{Result, matches::CompositeStrategy};
 use ratatui::prelude::Color;
@@ -16,18 +15,18 @@ pub struct Instance {
     link: Option<PathBuf>,
     buf: SegBuffer,
     cursor: CursorState,
-    compositor: Compositor,
+    compositor: filters::State,
     view: ViewCache,
 }
 
 impl Instance {
     pub fn new(name: String, link: Option<PathBuf>, buf: SegBuffer) -> Self {
-        let mut compositor = Compositor::new(&buf);
+        let mut compositor = filters::State::new(&buf);
         let composite = compositor.create_composite();
         Self {
             link,
             view: ViewCache::new(composite),
-            compositor: Compositor::new(&buf),
+            compositor: filters::State::new(&buf),
             name,
             buf,
             cursor: CursorState::new(),
@@ -62,12 +61,12 @@ impl Instance {
         self.buf.line_count()
     }
 
-    pub fn compositor_mut(&mut self) -> &mut Compositor {
+    pub fn compositor_mut(&mut self) -> &mut filters::State {
         &mut self.compositor
     }
 
     pub fn color_selector(&self) -> &ColorSelector {
-        &self.compositor.color_selector
+        self.compositor.color_selector()
     }
 
     pub fn cursor(&self) -> &CursorState {

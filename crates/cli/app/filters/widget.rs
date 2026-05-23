@@ -2,21 +2,15 @@ use super::super::{
     actions::{Action, FilterAction},
     mouse::MouseHandler,
 };
-use crate::{
-    colors,
-    components::{
-        cursor::Cursor,
-        filters::{Compositor, Filter},
-    },
-};
+use crate::{app::filters::Filter, colors, components::cursor::Cursor};
 use bitflags::bitflags;
 use crossterm::event::MouseEventKind;
 use ratatui::{prelude::*, widgets::*};
 use std::sync::OnceLock;
 
 pub struct FilterViewerWidget<'a> {
-    pub(super) view_index: usize,
-    pub(super) compositor: &'a mut Compositor,
+    pub(crate) view_index: usize,
+    pub(crate) compositor: &'a mut super::State,
 }
 
 impl FilterViewerWidget<'_> {

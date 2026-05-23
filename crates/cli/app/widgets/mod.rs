@@ -1,4 +1,3 @@
-mod filters;
 mod viewer;
 
 use super::{
@@ -8,12 +7,11 @@ use super::{
 };
 use crate::{
     app::{
-        config, status,
-        widgets::{filters::FilterViewerWidget, viewer::LineViewerWidget},
+        config, status, filters,
+        widgets::viewer::LineViewerWidget,
     },
     colors,
     components::{
-        filters::Compositor,
         instance::Instance,
         mux::{MultiplexerApp, MultiplexerMode},
     },
@@ -83,11 +81,11 @@ impl MultiplexerPane<'_> {
         area: &mut Rect,
         buf: &mut Buffer,
         view_index: usize,
-        compositor: &mut Compositor,
+        compositor: &mut filters::State,
         handler: &mut MouseHandler,
     ) {
         Self::filter_area(area, |area| {
-            FilterViewerWidget {
+            filters::Widget {
                 view_index,
                 compositor,
             }

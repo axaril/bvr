@@ -10,6 +10,7 @@ mod widgets;
 mod prompt;
 mod status;
 mod config;
+pub mod filters;
 
 use self::{
     actions::{Action, CommandAction, NormalAction, VisualAction},
