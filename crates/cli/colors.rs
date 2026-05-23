@@ -1,4 +1,4 @@
-use ratatui::{palette::Hsl, style::Color};
+use ratatui::style::Color;
 
 pub const WHITE: Color = Color::Indexed(255);
 pub const BLACK: Color = Color::Indexed(16);
@@ -30,6 +30,26 @@ pub const SHELL_ACCENT: Color = Color::Indexed(161);
 
 pub const ERROR: Color = Color::Red;
 
+const PALETTE_ANSI: [Color; 12] = [
+    Color::Red,
+    Color::Blue,
+    Color::Yellow,
+    Color::Green,
+    Color::Magenta,
+    Color::Cyan,
+    Color::LightRed,
+    Color::LightBlue,
+    Color::LightYellow,
+    Color::LightGreen,
+    Color::LightMagenta,
+    Color::LightCyan,
+];
+
+const PALETTE_256: [u8; 32] = [
+    196, 33, 220, 46, 201, 51, 203, 39, 226, 41, 207, 87, 167, 75, 178, 78, 170, 80, 210, 69, 184,
+    119, 213, 50, 174, 111, 222, 84, 177, 117, 217, 27,
+];
+
 pub mod regex {
     use ratatui::style::Color;
 
@@ -53,10 +73,9 @@ pub mod regex {
     pub const META: Color = Color::Indexed(203); // salmon
 }
 
-
 pub enum ColorSelector {
-    Color256 { index: u8 },
-    TrueColor { hue: f32 },
+    Ansi { index: usize },
+    Color256 { index: usize },
 }
 
 impl ColorSelector {
@@ -64,41 +83,37 @@ impl ColorSelector {
         use supports_color::Stream;
 
         if let Some(support) = supports_color::on(Stream::Stdout) {
-            if support.has_16m {
-                return Self::TrueColor { hue: 0.0 };
-            } else if support.has_256 {
+            if support.has_256 {
                 return Self::Color256 { index: 0 };
+            } else if support.has_256 {
+                return Self::Ansi { index: 0 };
             }
         }
 
-        panic!("Application requires at least 256-color support");
+        panic!("Application requires at least color support");
     }
 
     pub fn reset(&mut self) {
         match self {
+            ColorSelector::Ansi { index } => *index = 0,
             ColorSelector::Color256 { index } => *index = 0,
-            ColorSelector::TrueColor { hue } => *hue = 0.0,
         }
     }
 
     pub fn peek_color(&self) -> Color {
         match self {
-            ColorSelector::Color256 { index } => Color::Indexed(index + 9),
-            ColorSelector::TrueColor { hue } => Color::from_hsl(Hsl::new(*hue, 0.8, 0.5)),
+            ColorSelector::Ansi { index } => PALETTE_ANSI[*index % PALETTE_ANSI.len()],
+            ColorSelector::Color256 { index } => {
+                Color::Indexed(PALETTE_256[*index % PALETTE_256.len()])
+            }
         }
     }
 
     pub fn next_color(&mut self) -> Color {
         let color = self.peek_color();
         match self {
-            ColorSelector::Color256 { index } => {
-                *index += 27;
-                *index %= 230;
-            }
-            ColorSelector::TrueColor { hue } => {
-                *hue += 208.3;
-                *hue %= 360.0;
-            }
+            ColorSelector::Ansi { index } => *index = (*index + 1) % PALETTE_ANSI.len(),
+            ColorSelector::Color256 { index } => *index = (*index + 1) % PALETTE_256.len(),
         }
         color
     }
