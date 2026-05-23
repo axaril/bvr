@@ -81,6 +81,8 @@ impl App {
             commands: Vec::new(),
         };
 
+        // quit is a built-in command that always exists, but add for completion
+        app.add_command(Command::new("quit", &["q"]));
         app.add_command(Command::new("mcap", &[]).set_action(Self::command_mcap));
         app.add_command(
             Command::new("realpath", &["rp", "readlink", "rl"]).set_action(Self::command_realpath),
@@ -103,15 +105,13 @@ impl App {
         );
         app.add_command(
             Command::new("filter", &["f", "find"])
-                .add_subcommand(
-                    Command::new("link", &["l"]).set_action(Self::command_filter_linked),
-                )
+                .add_subcommand(Command::new("link", &[]).set_action(Self::command_filter_linked))
                 .add_subcommand(
                     Command::new("persist", &["p"]).set_action(Self::command_filter_persist),
                 )
                 .add_subcommand(Command::new("copy", &["c"]).set_action(Self::command_filter_copy))
                 .add_subcommand(Command::new("save", &["s"]).set_action(Self::command_filter_save))
-                .add_subcommand(Command::new("load", &["l"]).set_action(Self::command_filter_load))
+                .add_subcommand(Command::new("load", &[]).set_action(Self::command_filter_load))
                 .add_subcommand(
                     Command::new("clear", &["c"]).set_action(Self::command_filter_clear),
                 )
@@ -480,14 +480,14 @@ impl App {
 
                     if !self.app.viewer.prompt.advance_completion() {
                         // Fresh completion — compute candidates from the current buffer.
-                        let candidates = complete_command(&buf);
-                        match candidates.len() {
-                            0 => {}
-                            1 => {
-                                let new_buf = build_completion(&buf, candidates[0]);
+                        let candidates = self.complete_command(&buf);
+                        match candidates.as_slice() {
+                            &[] => {}
+                            &[candidate] => {
+                                let new_buf = build_completion(&buf, candidate);
                                 self.app.viewer.prompt.set_current(new_buf);
                             }
-                            _ => {
+                            &[candidate, ..] => {
                                 // Determine the static prefix (everything before the partial token).
                                 let prefix = if buf.ends_with(char::is_whitespace) {
                                     buf.clone()
@@ -498,8 +498,7 @@ impl App {
                                     }
                                 };
                                 // Show the first candidate and enter cycling mode.
-                                // let new_buf = format!("{}{} ", prefix, candidates[0]);
-                                let new_buf = build_completion(&buf, candidates[0]);
+                                let new_buf = build_completion(&buf, candidate);
                                 self.app.viewer.prompt.set_current(new_buf);
                                 self.app.viewer.status.msg(candidates.join("  "));
                                 self.app
@@ -674,26 +673,35 @@ impl App {
     pub fn process_command_system(&mut self, command: &str) {
         let parts: Vec<&str> = command.split_whitespace().collect();
 
-        let parts: &[&str] = &parts;
+        fn find_cmd<'a>(cmds: &'a mut [Command], token: Option<&str>) -> Option<&'a mut Command> {
+            cmds.iter_mut().find(|cmd| {
+                Some(cmd.name) == token
+                    || token
+                        .map(|token| cmd.aliases.contains(&token))
+                        .unwrap_or(false)
+            })
+        }
+
         if parts.is_empty() {
             return;
         }
+
         let mut cmd: Option<&mut Command> = None;
-        let mut parts = parts;
+        let mut parts = parts.as_slice();
         loop {
-            let part = parts.first().copied();
+            let (part, rem): (Option<&str>, &[&str]) = parts
+                .split_first()
+                .map_or((None, &[]), |(&first, rest)| (Some(first), rest));
 
             if let Some(current_cmd) = cmd {
                 let subcommand_string = current_cmd
                     .subcommands
                     .iter()
-                    .map(|cmd| cmd.name.as_str())
+                    .map(|cmd| cmd.name)
                     .collect::<Vec<_>>()
                     .join(", ");
 
-                let subcmd = current_cmd.subcommands.iter_mut().find(|cmd| {
-                    Some(cmd.name.as_str()) == part || cmd.aliases.contains(&part.unwrap_or(""))
-                });
+                let subcmd = find_cmd(&mut current_cmd.subcommands, part);
 
                 if subcmd.is_none() {
                     if let Some(action) = current_cmd.action.as_mut() {
@@ -708,11 +716,9 @@ impl App {
                 }
 
                 cmd = subcmd;
-                parts = &parts[1..];
+                parts = rem;
             } else {
-                let basecmd = self.commands.iter_mut().find(|cmd| {
-                    Some(cmd.name.as_str()) == part || cmd.aliases.contains(&part.unwrap_or(""))
-                });
+                let basecmd = find_cmd(&mut self.commands, part);
 
                 if basecmd.is_none() {
                     self.app
@@ -723,7 +729,7 @@ impl App {
                 }
 
                 cmd = basecmd;
-                parts = &parts[1..];
+                parts = rem;
             }
         }
     }
@@ -969,73 +975,68 @@ impl App {
     }
 
     fn command_export(&mut self, args: &[&str]) {
-        if args.len() != 1 {
+        let Some(path) = args.first() else {
             self.app
                 .viewer
                 .status
                 .msg("usage: export <path>".to_string());
             return;
-        }
-        let path = PathBuf::from(&args[0]);
+        };
+        let path = PathBuf::from(path);
         self.action_queue.push_back(Action::ExportFile { path });
     }
-}
 
-/// Return the sorted list of completions for the current prompt buffer.
-fn complete_command(buf: &str) -> Vec<&'static str> {
-    const TOP_LEVEL_CMDS: &[&str] = &[
-        "close", "c", "export", "filter", "find", "f", "gutter", "g", "mcap", "mux", "m", "open",
-        "o", "pb", "pbcopy", "quit", "q", "readlink", "realpath", "refresh", "rl", "rp",
-    ];
-
-    const FILTER_SUBCMDS: &[&str] = &[
-        "clear",
-        "copy",
-        "c",
-        "intersect",
-        "i",
-        "link",
-        "load",
-        "persist",
-        "save",
-        "union",
-        "u",
-    ];
-
-    const MUX_SUBCMDS: &[&str] = &["split", "s", "tabs", "t"];
-
-    let ends_with_space = buf.ends_with(char::is_whitespace);
-    let mut tokens: Vec<&str> = buf.split_whitespace().collect();
-
-    if ends_with_space {
-        // The user finished typing a token and wants candidates for the next one.
-        match tokens.as_slice() {
-            ["filter" | "find" | "f"] => FILTER_SUBCMDS.to_vec(),
-            ["mux" | "m"] => MUX_SUBCMDS.to_vec(),
-            _ => vec![],
+    fn complete_command(&self, buf: &str) -> Vec<&'static str> {
+        fn all_names(cmds: &[Command]) -> Vec<&'static str> {
+            cmds.iter().map(|cmd| cmd.name).collect()
         }
-    } else {
-        let partial = match tokens.pop() {
-            Some(p) => p,
-            None => return vec![],
-        };
-        match tokens.as_slice() {
-            [] => TOP_LEVEL_CMDS
-                .iter()
-                .filter(|&&c| c.starts_with(partial))
-                .copied()
-                .collect(),
-            ["filter" | "find" | "f"] => FILTER_SUBCMDS
-                .iter()
-                .filter(|&&c| c.starts_with(partial))
-                .copied()
-                .collect(),
-            ["mux" | "m"] => MUX_SUBCMDS
-                .iter()
-                .filter(|&&c| c.starts_with(partial))
-                .copied()
-                .collect(),
-            _ => vec![],
+
+        fn find_cmd<'a>(cmds: &'a [Command], token: &str) -> Option<&'a Command> {
+            cmds.iter()
+                .find(|cmd| cmd.name == token || cmd.aliases.contains(&token))
+        }
+
+        if buf.is_empty() {
+            return all_names(&self.commands);
+        }
+
+        let ends_with_space = buf.ends_with(char::is_whitespace);
+        let mut tokens: Vec<&str> = buf.split_whitespace().collect();
+
+        if ends_with_space {
+            // Every token is complete; navigate the hierarchy and offer the next level.
+            let mut current: &[Command] = &self.commands;
+            for token in &tokens {
+                match find_cmd(current, token) {
+                    Some(cmd) if !cmd.subcommands.is_empty() => {
+                        current = &cmd.subcommands;
+                    }
+                    _ => return vec![],
+                }
+            }
+
+            all_names(current)
+        } else {
+            // Last token is a partial word; complete it against the current level.
+            let partial = match tokens.pop() {
+                Some(p) => p,
+                None => return vec![],
+            };
+
+            let mut current: &[Command] = &self.commands;
+            for token in &tokens {
+                match find_cmd(current, token) {
+                    Some(cmd) if !cmd.subcommands.is_empty() => {
+                        current = &cmd.subcommands;
+                    }
+                    _ => return vec![],
+                }
+            }
+
+            all_names(current)
+                .into_iter()
+                .filter(|c| c.starts_with(partial))
+                .collect()
         }
     }
 }
