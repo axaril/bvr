@@ -1,5 +1,6 @@
 mod config;
 mod filters;
+mod regex_highlight;
 mod viewer;
 
 use super::{
@@ -175,7 +176,14 @@ impl PromptWidget<'_> {
         }
         .render(indicator_area, buf);
 
-        Paragraph::new(cmd_buf)
+        // Syntax-highlight the input when editing a regex (not escaped/literal mode).
+        let prompt_line = match mode {
+            PromptMode::Search { escaped: false, .. } => {
+                regex_highlight::RegexHighlighter::new(cmd_buf).highlight()
+            }
+            _ => Line::raw(cmd_buf),
+        };
+        Paragraph::new(prompt_line)
             .bg(colors::BG)
             .scroll((0, left as u16))
             .render(data_area, buf);
