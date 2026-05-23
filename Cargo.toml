@@ -44,7 +44,7 @@ regex = { workspace = true }
 itoa = "1.0"
 bitflags = "2.11"
 lru = { workspace = true }
-supports-color = "3.0.2"
+supports-color = "3.0"
 unicode-width = "0.2"
 unicode-segmentation = "1.13"
 
