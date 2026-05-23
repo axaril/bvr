@@ -18,6 +18,7 @@ use crate::{
     },
     components::{
         config::filter::FilterConfigApp,
+        cursor::Cursor,
         instance::Instance,
         mux::{MultiplexerApp, MultiplexerMode},
         prompt::{self, PromptApp, PromptMovement},
@@ -409,7 +410,51 @@ impl App {
                         Direction::Next => self.app.viewer.prompt.forward(),
                     }
                 }
-                CommandAction::Complete => (),
+                CommandAction::Complete => {
+                    if self.app.viewer.mode != InputMode::Prompt(PromptMode::Command) {
+                        return Ok(true);
+                    }
+                    // Only attempt completion when the cursor is at the end of the buffer.
+                    let buf = self.app.viewer.prompt.buf().to_owned();
+                    let Cursor::Singleton(cursor_pos) = self.app.viewer.prompt.cursor() else {
+                        return Ok(true);
+                    };
+                    if cursor_pos != buf.len() {
+                        return Ok(true);
+                    }
+
+                    if !self.app.viewer.prompt.advance_completion() {
+                        // Fresh completion — compute candidates from the current buffer.
+                        let candidates = complete_command(&buf);
+                        match candidates.len() {
+                            0 => {}
+                            1 => {
+                                let new_buf = build_completion(&buf, candidates[0]);
+                                self.app.viewer.prompt.set_current(new_buf);
+                            }
+                            _ => {
+                                // Determine the static prefix (everything before the partial token).
+                                let prefix = if buf.ends_with(char::is_whitespace) {
+                                    buf.clone()
+                                } else {
+                                    match buf.rfind(char::is_whitespace) {
+                                        Some(pos) => buf[..=pos].to_owned(),
+                                        None => String::new(),
+                                    }
+                                };
+                                // Show the first candidate and enter cycling mode.
+                                // let new_buf = format!("{}{} ", prefix, candidates[0]);
+                                let new_buf = build_completion(&buf, candidates[0]);
+                                self.app.viewer.prompt.set_current(new_buf);
+                                self.app.viewer.status.msg(candidates.join("  "));
+                                self.app
+                                    .viewer
+                                    .prompt
+                                    .add_completion_cycle(prefix, candidates);
+                            }
+                        }
+                    }
+                }
             },
             Action::ExportFile { path } => {
                 if let Some(instance) = self.app.viewer.mux.active_mut() {
@@ -801,6 +846,78 @@ impl App {
         }
 
         true
+    }
+}
+
+/// Return the sorted list of completions for the current prompt buffer.
+fn complete_command(buf: &str) -> Vec<&'static str> {
+    const TOP_LEVEL_CMDS: &[&str] = &[
+        "close", "c", "export", "filter", "find", "f", "gutter", "g", "mcap", "mux", "m", "open",
+        "o", "pb", "pbcopy", "quit", "q", "readlink", "realpath", "refresh", "rl", "rp",
+    ];
+
+    const FILTER_SUBCMDS: &[&str] = &[
+        "clear",
+        "copy",
+        "c",
+        "intersect",
+        "i",
+        "link",
+        "load",
+        "persist",
+        "save",
+        "union",
+        "u",
+    ];
+
+    const MUX_SUBCMDS: &[&str] = &["split", "s", "tabs", "t"];
+
+    let ends_with_space = buf.ends_with(char::is_whitespace);
+    let mut tokens: Vec<&str> = buf.split_whitespace().collect();
+
+    if ends_with_space {
+        // The user finished typing a token and wants candidates for the next one.
+        match tokens.as_slice() {
+            ["filter" | "find" | "f"] => FILTER_SUBCMDS.to_vec(),
+            ["mux" | "m"] => MUX_SUBCMDS.to_vec(),
+            _ => vec![],
+        }
+    } else {
+        let partial = match tokens.pop() {
+            Some(p) => p,
+            None => return vec![],
+        };
+        match tokens.as_slice() {
+            [] => TOP_LEVEL_CMDS
+                .iter()
+                .filter(|&&c| c.starts_with(partial))
+                .copied()
+                .collect(),
+            ["filter" | "find" | "f"] => FILTER_SUBCMDS
+                .iter()
+                .filter(|&&c| c.starts_with(partial))
+                .copied()
+                .collect(),
+            ["mux" | "m"] => MUX_SUBCMDS
+                .iter()
+                .filter(|&&c| c.starts_with(partial))
+                .copied()
+                .collect(),
+            _ => vec![],
+        }
+    }
+}
+
+/// Build the new buffer content after accepting `completion` for the last token.
+fn build_completion(buf: &str, completion: &str) -> String {
+    if buf.ends_with(char::is_whitespace) {
+        format!("{buf}{completion} ")
+    } else {
+        let prefix = match buf.rfind(char::is_whitespace) {
+            Some(pos) => &buf[..=pos],
+            None => "",
+        };
+        format!("{prefix}{completion} ")
     }
 }
 

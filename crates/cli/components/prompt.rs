@@ -25,12 +25,22 @@ impl PromptMovement {
     }
 }
 
+struct CompletionCycle {
+    /// Part of the buffer that comes before the token being completed.
+    prefix: String,
+    /// Ordered list of candidates to cycle through.
+    candidates: Vec<&'static str>,
+    /// Index of the candidate currently shown in the buffer.
+    index: usize,
+}
+
 pub struct PromptApp {
     history: Vec<String>,
     index: usize,
     buf: String,
     cursor: CursorState,
     viewport: Viewport,
+    completion_cycle: Option<CompletionCycle>,
 }
 
 impl PromptApp {
@@ -41,6 +51,7 @@ impl PromptApp {
             buf: String::new(),
             cursor: CursorState::new(),
             viewport: Viewport::new(),
+            completion_cycle: None,
         }
     }
 
@@ -148,12 +159,39 @@ impl PromptApp {
         }
     }
 
+    pub fn clear_completion_cycle(&mut self) {
+        self.completion_cycle = None;
+    }
+
+    pub fn add_completion_cycle(&mut self, prefix: String, candidates: Vec<&'static str>) {
+        self.completion_cycle = Some(CompletionCycle {
+            prefix,
+            candidates,
+            index: 0,
+        });
+    }
+
+    pub fn advance_completion(&mut self) -> bool {
+        self.completion_cycle
+            .as_mut()
+            .map(|cycle| {
+                cycle.index = (cycle.index + 1) % cycle.candidates.len();
+                let index = cycle.index;
+                format!("{}{} ", cycle.prefix, cycle.candidates[index])
+            })
+            .map(|buf| self.set_current(buf)).is_some()
+    }
+
     pub fn enter_char(&mut self, input: char) {
+        self.clear_completion_cycle();
+
         let mut b = [0; 4];
         self.enter_str(input.encode_utf8(&mut b));
     }
 
     pub fn enter_str(&mut self, input: &str) {
+        self.clear_completion_cycle();
+
         if self.index < self.history.len() {
             self.buf = self.history[self.index].clone();
             self.index = self.history.len();
@@ -185,6 +223,8 @@ impl PromptApp {
     }
 
     pub fn delete(&mut self) -> bool {
+        self.clear_completion_cycle();
+
         if self.index < self.history.len() {
             self.buf = self.history[self.index].clone();
             self.index = self.history.len();
@@ -209,12 +249,26 @@ impl PromptApp {
         true
     }
 
+    /// Replace the current buffer with `text`, placing the cursor at the end.
+    /// History is not modified.
+    pub fn set_current(&mut self, text: String) {
+        if self.index < self.history.len() {
+            self.index = self.history.len();
+        }
+        self.buf = text;
+        self.cursor.place(self.buf.len());
+    }
+
     pub fn backward(&mut self) {
+        self.clear_completion_cycle();
+
         self.index = self.index.saturating_sub(1);
         self.cursor.place(self.buf().len());
     }
 
     pub fn forward(&mut self) {
+        self.clear_completion_cycle();
+
         self.index = self.index.saturating_add(1).min(self.history.len());
         self.cursor.place(self.buf().len());
     }
@@ -229,6 +283,8 @@ impl PromptApp {
     }
 
     pub fn take(&mut self) -> String {
+        self.clear_completion_cycle();
+
         self.cursor.reset();
         if self.index < self.history.len() {
             let output = self.history.remove(self.index);
