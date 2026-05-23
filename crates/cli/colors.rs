@@ -25,6 +25,7 @@ pub const COMMAND_ACCENT: Color = Color::Indexed(48);
 pub const SELECT_ACCENT: Color = Color::Indexed(170);
 pub const FILTER_ACCENT: Color = Color::Indexed(178);
 pub const CONFIG_ACCENT: Color = Color::Indexed(213);
+pub const HELP_ACCENT: Color = Color::Indexed(40);
 
 pub const SHELL_ACCENT: Color = Color::Indexed(161);
 

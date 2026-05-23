@@ -56,6 +56,7 @@ impl<'a> Widget for StatusWidget<'a> {
             InputMode::Visual => (colors::SELECT_ACCENT, " VISUAL "),
             InputMode::Filter => (colors::FILTER_ACCENT, " FILTER "),
             InputMode::Config => (colors::CONFIG_ACCENT, " CONFIG "),
+            InputMode::Help => (colors::HELP_ACCENT, " HELP "),
         };
 
         let mut v = Vec::with_capacity(16);
@@ -313,6 +314,7 @@ pub struct MultiplexerWidget<'a> {
     pub mux: &'a mut MultiplexerApp,
     pub status: &'a mut StatusApp,
     pub config: &'a mut FilterConfigApp,
+    pub help: &'a mut super::help::HelpManual,
     pub mode: InputMode,
     pub gutter: bool,
     pub regex: Option<&'a Regex>,
@@ -366,6 +368,11 @@ impl MultiplexerWidget<'_> {
         if self.mode == InputMode::Config {
             MultiplexerPane::filter_area(&mut area, |area| {
                 ConfigViewerWidget { app: self.config }.render(area, buf, handler);
+            });
+        } else if self.mode == InputMode::Help {
+            MultiplexerPane::filter_area(&mut area, |area| {
+                self.help.set_height(usize::from(area.height));
+                self.help.render(area, buf);
             });
         }
 
