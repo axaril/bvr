@@ -335,5 +335,6 @@ impl Instance {
         self.compositor
             .selected_filter_mut()
             .map(|filter| filter.set_color(color));
+        self.view.reset_color_cache();
     }
 }

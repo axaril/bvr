@@ -153,19 +153,27 @@ impl PromptWidget<'_> {
 
         let [indicator_area, data_area] = Self::split_prompt(area);
 
+        let cursor = self.prompt.cursor();
+        let left = self.prompt.viewport().left();
+        self.prompt.update_viewport(usize::from(area.width));
+        let cmd_buf = self.prompt.buf();
+
         match mode {
             PromptMode::Command => Span::raw(":").fg(colors::COMMAND_ACCENT),
             PromptMode::Search { .. } => Span::raw("/").fg(colors::FILTER_ACCENT),
             PromptMode::Shell { pipe: true } => Span::raw("|").fg(colors::SHELL_ACCENT),
             PromptMode::Shell { pipe: false } => Span::raw("!").fg(colors::SHELL_ACCENT),
-            PromptMode::FilterColor => Span::raw("#").fg(colors::FILTER_ACCENT),
+            PromptMode::FilterColor => {
+                let span = Span::raw("#");
+
+                use std::str::FromStr;
+                match ratatui::style::Color::from_str(cmd_buf) {
+                    Ok(color) => span.fg(color),
+                    Err(_) => span.bg(colors::ERROR),
+                }
+            }
         }
         .render(indicator_area, buf);
-
-        let cursor = self.prompt.cursor();
-        let left = self.prompt.viewport().left();
-        self.prompt.update_viewport(usize::from(area.width));
-        let cmd_buf = self.prompt.buf();
 
         Paragraph::new(cmd_buf)
             .bg(colors::BG)

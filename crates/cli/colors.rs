@@ -28,6 +28,8 @@ pub const CONFIG_ACCENT: Color = Color::Indexed(213);
 
 pub const SHELL_ACCENT: Color = Color::Indexed(161);
 
+pub const ERROR: Color = Color::Red;
+
 pub enum ColorSelector {
     Color256 { index: u8 },
     TrueColor { hue: f32 },
