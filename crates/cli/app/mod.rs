@@ -1,4 +1,5 @@
 mod actions;
+mod command;
 pub mod control;
 mod keybinding;
 mod mouse;
@@ -13,6 +14,7 @@ use self::{
 };
 use crate::{
     app::{
+        command::Command,
         terminal::{Terminal, TerminalState},
         widgets::{MultiplexerWidget, PromptWidget},
     },
@@ -61,14 +63,67 @@ impl State {
     }
 }
 
+pub struct App {
+    app: State,
+    term: terminal::TerminalState,
+    refresh: bool,
+    action_queue: VecDeque<Action>,
+    commands: Vec<Command>,
+}
+
 impl App {
-    pub fn new(app: State, term: Terminal) -> Self {
-        Self {
-            app,
+    pub fn new(state: State, term: Terminal) -> Self {
+        let mut app = Self {
+            app: state,
             term: TerminalState::new(term),
             action_queue: VecDeque::new(),
             refresh: false,
-        }
+            commands: Vec::new(),
+        };
+
+        app.add_command(Command::new("mcap", &[]).set_action(Self::command_mcap));
+        app.add_command(
+            Command::new("realpath", &["rp", "readlink", "rl"]).set_action(Self::command_realpath),
+        );
+        app.add_command(Command::new("pbcopy", &["pb"]).set_action(Self::command_pbcopy));
+        app.add_command(Command::new("refresh", &[]).set_action(Self::command_refresh));
+        app.add_command(Command::new("open", &["o"]).set_action(Self::command_open));
+        app.add_command(Command::new("export", &[]).set_action(Self::command_export));
+        app.add_command(Command::new("close", &["c"]).set_action(Self::command_close));
+        app.add_command(Command::new("gutter", &["g"]).set_action(Self::command_gutter));
+        app.add_command(
+            Command::new("mux", &["m"])
+                .add_subcommand(
+                    Command::new("tabs", &["t", "none"]).set_action(Self::command_mux_tabs),
+                )
+                .add_subcommand(
+                    Command::new("split", &["s", "win"]).set_action(Self::command_mux_panes),
+                )
+                .set_action(Self::command_mux),
+        );
+        app.add_command(
+            Command::new("filter", &["f", "find"])
+                .add_subcommand(
+                    Command::new("link", &["l"]).set_action(Self::command_filter_linked),
+                )
+                .add_subcommand(
+                    Command::new("persist", &["p"]).set_action(Self::command_filter_persist),
+                )
+                .add_subcommand(Command::new("copy", &["c"]).set_action(Self::command_filter_copy))
+                .add_subcommand(Command::new("save", &["s"]).set_action(Self::command_filter_save))
+                .add_subcommand(Command::new("load", &["l"]).set_action(Self::command_filter_load))
+                .add_subcommand(
+                    Command::new("clear", &["c"]).set_action(Self::command_filter_clear),
+                )
+                .add_subcommand(
+                    Command::new("union", &["u"]).set_action(Self::command_filter_union),
+                )
+                .add_subcommand(
+                    Command::new("intersect", &["i"]).set_action(Self::command_filter_intersect),
+                ),
+        );
+
+        app
     }
 
     pub fn run(&mut self) -> Result<()> {
@@ -612,222 +667,72 @@ impl App {
         true
     }
 
+    pub fn add_command(&mut self, command: Command) {
+        self.commands.push(command);
+    }
+
+    pub fn process_command_system(&mut self, command: &str) {
+        let parts: Vec<&str> = command.split_whitespace().collect();
+
+        let parts: &[&str] = &parts;
+        if parts.is_empty() {
+            return;
+        }
+        let mut cmd: Option<&mut Command> = None;
+        let mut parts = parts;
+        loop {
+            let part = parts.first().copied();
+
+            if let Some(current_cmd) = cmd {
+                let subcommand_string = current_cmd
+                    .subcommands
+                    .iter()
+                    .map(|cmd| cmd.name.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ");
+
+                let subcmd = current_cmd.subcommands.iter_mut().find(|cmd| {
+                    Some(cmd.name.as_str()) == part || cmd.aliases.contains(&part.unwrap_or(""))
+                });
+
+                if subcmd.is_none() {
+                    if let Some(action) = current_cmd.action.as_mut() {
+                        action(self, parts);
+                    } else {
+                        self.app.viewer.status.msg(format!(
+                            "Command '{}' requires subcommand: {}",
+                            current_cmd.name, subcommand_string
+                        ));
+                    }
+                    return;
+                }
+
+                cmd = subcmd;
+                parts = &parts[1..];
+            } else {
+                let basecmd = self.commands.iter_mut().find(|cmd| {
+                    Some(cmd.name.as_str()) == part || cmd.aliases.contains(&part.unwrap_or(""))
+                });
+
+                if basecmd.is_none() {
+                    self.app
+                        .viewer
+                        .status
+                        .msg(format!("Unknown command '{}'", part.unwrap_or("UNKNOWN")));
+                    return;
+                }
+
+                cmd = basecmd;
+                parts = &parts[1..];
+            }
+        }
+    }
+
     fn process_command(&mut self, command: &str) -> bool {
         let mut parts = command.split_whitespace();
 
         match parts.next() {
             Some("quit" | "q") => return false,
-            Some("mcap") => {
-                if let Err(_) = self.term.toggle_mouse_capture() {
-                    self.app
-                        .viewer
-                        .status
-                        .msg("mouse capture toggle failed".to_string());
-                }
-                return true;
-            }
-            Some("readlink" | "realpath" | "rl" | "rp") => {
-                if let Some(instance) = self.app.viewer.mux.active_mut() {
-                    if let Some(link) = instance.link() {
-                        let link = link.display();
-                        self.app.viewer.status.msg(format!("readlink: {}", link));
-                        crossterm::execute!(
-                            self.term.backend_mut(),
-                            CopyToClipboard::to_clipboard_from(link.to_string())
-                        )
-                        .ok();
-                    } else {
-                        self.app.viewer.status.msg("readlink: no link".to_string());
-                    }
-                } else {
-                    self.app
-                        .viewer
-                        .status
-                        .msg(String::from("No active instances"));
-                }
-            }
-            Some("refresh") => {
-                self.refresh = true;
-            }
-            Some("open" | "o") => {
-                let path = parts.collect::<PathBuf>();
-                if let Err(err) = self.app.viewer.open_file(path.as_ref()) {
-                    self.app
-                        .viewer
-                        .status
-                        .msg(format!("{}: {err}", path.display()));
-                }
-            }
-            Some("pb" | "pbcopy") => {
-                if let Some(instance) = self.app.viewer.mux.active_mut() {
-                    match instance.export_string() {
-                        Ok(text) => {
-                            match crossterm::execute!(
-                                self.term.backend_mut(),
-                                CopyToClipboard::to_clipboard_from(text)
-                            ) {
-                                Ok(_) => {
-                                    self.app
-                                        .viewer
-                                        .status
-                                        .msg("pbcopy: copied to clipboard".to_string());
-                                }
-                                Err(err) => {
-                                    self.app.viewer.status.msg(format!("pbcopy: {err}"));
-                                }
-                            };
-                        }
-                        Err(err) => {
-                            self.app.viewer.status.msg(format!("pbcopy: {err}"));
-                        }
-                    }
-                }
-            }
-            Some("close" | "c") => {
-                if self.app.viewer.mux.active_mut().is_some() {
-                    self.app.viewer.mux.close_active()
-                } else {
-                    self.app
-                        .viewer
-                        .status
-                        .msg(String::from("No active instances"));
-                }
-            }
-            Some("gutter" | "g") => {
-                self.app.viewer.toggle_gutter();
-            }
-            Some("mux" | "m") => match parts.next() {
-                Some("tabs" | "t" | "none") => self.app.viewer.mux.set_mode(MultiplexerMode::Tabs),
-                Some("split" | "s" | "win") => self.app.viewer.mux.set_mode(MultiplexerMode::Panes),
-                Some(style) => {
-                    self.app.viewer.status.msg(format!(
-                        "mux {style}: invalid style, one of `tabs`, `split`"
-                    ));
-                }
-                None => self
-                    .app
-                    .viewer
-                    .mux
-                    .set_mode(self.app.viewer.mux.mode().swap()),
-            },
-            Some("filter" | "find" | "f") => match parts.next() {
-                Some("link") => {
-                    self.app.viewer.linked_filters = !self.app.viewer.linked_filters;
-                    if self.app.viewer.linked_filters {
-                        self.app.viewer.replicate_filters_on_all_instances();
-                    }
-                    return true;
-                }
-                Some("persist") => {
-                    let new_persistence = !self.app.viewer.filter_config.is_persistent();
-
-                    if let Err(err) = self
-                        .app
-                        .viewer
-                        .filter_config
-                        .set_persistent(new_persistence)
-                    {
-                        self.app.viewer.status.msg(format!("filter persist: {err}"));
-                        return true;
-                    }
-
-                    self.app
-                        .viewer
-                        .status
-                        .msg(format!("filter persist: persistence = {new_persistence}"));
-                }
-                Some("copy" | "c") => {
-                    let Some(source) = self.app.viewer.mux.active_mut() else {
-                        return true;
-                    };
-                    let export = source.compositor_mut().filters().export(None);
-
-                    let Some(idx) = parts.next() else {
-                        self.app
-                            .viewer
-                            .status
-                            .msg(String::from("filter export: requires instance index"));
-                        return true;
-                    };
-
-                    let Ok(idx) = idx.parse::<usize>() else {
-                        self.app
-                            .viewer
-                            .status
-                            .msg(format!("filter export {idx}: invalid index"));
-                        return true;
-                    };
-                    let idx = idx.saturating_sub(1);
-                    if self.app.viewer.mux.active_index() == idx {
-                        self.app.viewer.status.msg(String::from(
-                            "filter export: cannot export to active instance",
-                        ));
-                        return true;
-                    }
-                    let Some(target) = self.app.viewer.mux.instances_mut().get_mut(idx) else {
-                        self.app
-                            .viewer
-                            .status
-                            .msg(format!("filter export {idx}: invalid index"));
-                        return true;
-                    };
-
-                    target.import_user_filters(&export);
-                }
-                Some("save") => {
-                    let Some(source) = self.app.viewer.mux.active_mut() else {
-                        return true;
-                    };
-                    let name: String = parts.collect::<Vec<&str>>().join(" ");
-                    let export = source.compositor_mut().filters().export(Some(name));
-
-                    if let Err(err) = self.app.viewer.filter_config.add_filter(export) {
-                        self.app.viewer.status.msg(format!("filter save: {err}"));
-                    }
-
-                    self.app
-                        .viewer
-                        .status
-                        .msg("filter save: saved filters".to_string());
-                }
-                Some("load") => {
-                    self.app.viewer.mode = InputMode::Config;
-                }
-                Some("clear") => {
-                    self.app.viewer.demux_mut(|instance| {
-                        instance.clear_filters();
-                    });
-                }
-                Some("union" | "u" | "||" | "|") => {
-                    self.app.viewer.demux_mut(|instance| {
-                        instance.set_composite_strategy(CompositeStrategy::Union);
-                    });
-                }
-                Some("intersect" | "i" | "&&" | "&") => {
-                    self.app.viewer.demux_mut(|instance| {
-                        instance.set_composite_strategy(CompositeStrategy::Intersection);
-                    });
-                }
-                Some(cmd) => {
-                    self.app
-                        .viewer
-                        .status
-                        .msg(format!("filter {cmd}: invalid subcommand"));
-                }
-                None => {
-                    self.app.viewer.status.msg(
-                        String::from("filter: requires subcommand, one of `r[egex]`, `l[it]`, `clear`, `union`, `intersect`")
-                    );
-                }
-            },
-            Some("export") => {
-                let path = parts.collect::<PathBuf>();
-                self.app.viewer.status.msg(format!(
-                    "{}: export starting (this may take a while...)",
-                    path.display()
-                ));
-                self.action_queue.push_back(Action::ExportFile { path });
-            }
             Some(cmd) => {
                 if let Ok(line_number) = cmd.parse::<usize>() {
                     if let Some(instance) = self.app.viewer.mux.active_mut() {
@@ -836,16 +741,243 @@ impl App {
                         }
                     }
                 } else {
-                    self.app
-                        .viewer
-                        .status
-                        .msg(format!("{cmd}: Invalid command"))
+                    self.process_command_system(command)
                 }
             }
             None => return true,
         }
 
         true
+    }
+
+    fn command_mcap(&mut self, _: &[&str]) {
+        if let Err(_) = self.term.toggle_mouse_capture() {
+            self.app
+                .viewer
+                .status
+                .msg("mouse capture toggle failed".to_string());
+        } else {
+            self.app.viewer.status.msg(format!(
+                "mouse capture {}",
+                if self.term.mouse_capture {
+                    "enabled"
+                } else {
+                    "disabled"
+                }
+            ));
+        }
+    }
+
+    fn command_realpath(&mut self, _: &[&str]) {
+        if let Some(instance) = self.app.viewer.mux.active_mut() {
+            if let Some(link) = instance.link() {
+                let link = link.display();
+                self.app.viewer.status.msg(format!("readlink: {}", link));
+                crossterm::execute!(
+                    self.term.backend_mut(),
+                    CopyToClipboard::to_clipboard_from(link.to_string())
+                )
+                .ok();
+            } else {
+                self.app.viewer.status.msg("readlink: no link".to_string());
+            }
+        } else {
+            self.app
+                .viewer
+                .status
+                .msg(String::from("No active instances"));
+        }
+    }
+
+    fn command_refresh(&mut self, _: &[&str]) {
+        self.refresh = true;
+    }
+
+    fn command_open(&mut self, args: &[&str]) {
+        if args.len() != 1 {
+            self.app.viewer.status.msg("usage: open <path>".to_string());
+            return;
+        }
+
+        let path = args.into_iter().collect::<PathBuf>();
+        if let Err(err) = self.app.viewer.open_file(path.as_ref()) {
+            self.app
+                .viewer
+                .status
+                .msg(format!("{}: {err}", path.display()));
+        }
+    }
+
+    fn command_pbcopy(&mut self, _: &[&str]) {
+        if let Some(instance) = self.app.viewer.mux.active_mut() {
+            match instance.export_string() {
+                Ok(text) => {
+                    match crossterm::execute!(
+                        self.term.backend_mut(),
+                        CopyToClipboard::to_clipboard_from(text)
+                    ) {
+                        Ok(_) => {
+                            self.app
+                                .viewer
+                                .status
+                                .msg("pbcopy: copied to clipboard".to_string());
+                        }
+                        Err(err) => {
+                            self.app.viewer.status.msg(format!("pbcopy: {err}"));
+                        }
+                    };
+                }
+                Err(err) => {
+                    self.app.viewer.status.msg(format!("pbcopy: {err}"));
+                }
+            }
+        }
+    }
+
+    fn command_close(&mut self, _: &[&str]) {
+        if self.app.viewer.mux.active_mut().is_some() {
+            self.app.viewer.mux.close_active()
+        } else {
+            self.app
+                .viewer
+                .status
+                .msg(String::from("No active instances"));
+        }
+    }
+
+    fn command_gutter(&mut self, _: &[&str]) {
+        self.app.viewer.toggle_gutter();
+    }
+
+    fn command_mux_tabs(&mut self, _: &[&str]) {
+        self.app.viewer.mux.set_mode(MultiplexerMode::Tabs);
+    }
+
+    fn command_mux_panes(&mut self, _: &[&str]) {
+        self.app.viewer.mux.set_mode(MultiplexerMode::Panes);
+    }
+
+    fn command_mux(&mut self, _: &[&str]) {
+        self.app
+            .viewer
+            .mux
+            .set_mode(self.app.viewer.mux.mode().swap());
+    }
+
+    fn command_filter_linked(&mut self, _: &[&str]) {
+        self.app.viewer.linked_filters = !self.app.viewer.linked_filters;
+        if self.app.viewer.linked_filters {
+            self.app.viewer.replicate_filters_on_all_instances();
+        }
+    }
+
+    fn command_filter_persist(&mut self, _: &[&str]) {
+        let new_persistence = !self.app.viewer.filter_config.is_persistent();
+
+        if let Err(err) = self
+            .app
+            .viewer
+            .filter_config
+            .set_persistent(new_persistence)
+        {
+            self.app.viewer.status.msg(format!("filter persist: {err}"));
+            return;
+        }
+
+        self.app
+            .viewer
+            .status
+            .msg(format!("filter persist: persistence = {new_persistence}"));
+    }
+
+    fn command_filter_copy(&mut self, args: &[&str]) {
+        let Some(source) = self.app.viewer.mux.active_mut() else {
+            return;
+        };
+        let export = source.compositor_mut().filters().export(None);
+
+        let Some(idx) = args.first() else {
+            self.app
+                .viewer
+                .status
+                .msg(String::from("filter export: requires instance index"));
+            return;
+        };
+
+        let Ok(idx) = idx.parse::<usize>() else {
+            self.app
+                .viewer
+                .status
+                .msg(format!("filter export {idx}: invalid index"));
+            return;
+        };
+        let idx = idx.saturating_sub(1);
+        if self.app.viewer.mux.active_index() == idx {
+            self.app.viewer.status.msg(String::from(
+                "filter export: cannot export to active instance",
+            ));
+            return;
+        }
+        let Some(target) = self.app.viewer.mux.instances_mut().get_mut(idx) else {
+            self.app
+                .viewer
+                .status
+                .msg(format!("filter export {idx}: invalid index"));
+            return;
+        };
+
+        target.import_user_filters(&export);
+    }
+
+    fn command_filter_save(&mut self, args: &[&str]) {
+        let Some(source) = self.app.viewer.mux.active_mut() else {
+            return;
+        };
+        let name: String = args.into_iter().copied().collect::<Vec<&str>>().join(" ");
+        let export = source.compositor_mut().filters().export(Some(name));
+
+        if let Err(err) = self.app.viewer.filter_config.add_filter(export) {
+            self.app.viewer.status.msg(format!("filter save: {err}"));
+        }
+
+        self.app
+            .viewer
+            .status
+            .msg("filter save: saved filters".to_string());
+    }
+
+    fn command_filter_load(&mut self, _: &[&str]) {
+        self.app.viewer.mode = InputMode::Config;
+    }
+
+    fn command_filter_clear(&mut self, _: &[&str]) {
+        self.app.viewer.demux_mut(|instance| {
+            instance.clear_filters();
+        });
+    }
+
+    fn command_filter_union(&mut self, _: &[&str]) {
+        self.app.viewer.demux_mut(|instance| {
+            instance.set_composite_strategy(CompositeStrategy::Union);
+        });
+    }
+
+    fn command_filter_intersect(&mut self, _: &[&str]) {
+        self.app.viewer.demux_mut(|instance| {
+            instance.set_composite_strategy(CompositeStrategy::Intersection);
+        });
+    }
+
+    fn command_export(&mut self, args: &[&str]) {
+        if args.len() != 1 {
+            self.app
+                .viewer
+                .status
+                .msg("usage: export <path>".to_string());
+            return;
+        }
+        let path = PathBuf::from(&args[0]);
+        self.action_queue.push_back(Action::ExportFile { path });
     }
 }
 
@@ -1107,11 +1239,4 @@ impl Viewer {
     {
         self.mux.demux_mut(self.linked_filters, f);
     }
-}
-
-pub struct App {
-    app: State,
-    term: terminal::TerminalState,
-    refresh: bool,
-    action_queue: VecDeque<Action>,
 }
