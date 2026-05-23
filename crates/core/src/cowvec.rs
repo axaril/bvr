@@ -442,7 +442,7 @@ impl<T> Deref for CowVecSnapshot<T> {
 #[cfg(test)]
 mod test {
     use super::CowVec;
-    use std::sync::Arc;
+    use std::sync::{Arc, Barrier};
     use std::time::Duration;
 
     #[test]
@@ -775,6 +775,10 @@ mod test {
     fn test_completion_stress_test() {
         use std::thread;
 
+        const THREADS: usize = 10;
+
+        let barrier = Arc::new(Barrier::new(THREADS + 1));
+
         // Test with many concurrent readers checking completion status
         let (arr, mut writer) = CowVec::<usize>::new();
         let mut handles = Vec::new();
@@ -782,7 +786,10 @@ mod test {
         // Spawn multiple reader threads
         for thread_id in 0..10 {
             let arr_clone = arr.clone();
+            let barrier_clone = barrier.clone();
             let handle = thread::spawn(move || {
+                barrier_clone.wait();
+
                 let mut completion_changes = 0;
                 let mut last_complete = arr_clone.is_complete();
 
@@ -807,8 +814,7 @@ mod test {
                 thread::sleep(Duration::from_millis(1));
             }
         }
-
-        thread::sleep(Duration::from_millis(5));
+        barrier.wait();
         drop(writer);
 
         // Wait for all readers and verify results
@@ -936,19 +942,19 @@ mod test {
 
     #[test]
     fn test_atomic_ordering_optimization() {
-        use std::sync::{Arc, Barrier};
-        use std::thread;
 
         let (arr, mut writer) = CowVec::<usize>::new();
 
+        const THREADS: usize = 20;
+
         // +1 for the main thread that will drop the writer.
-        let barrier = Arc::new(Barrier::new(21));
+        let barrier = Arc::new(Barrier::new(THREADS + 1));
         let mut handles = Vec::new();
 
-        for thread_id in 0..20 {
+        for thread_id in 0..THREADS {
             let arr_clone = arr.clone();
             let barrier_clone = barrier.clone();
-            let handle = thread::spawn(move || {
+            let handle = std::thread::spawn(move || {
                 // Signal that this thread is running, then wait until the main
                 // thread has dropped the writer.
                 barrier_clone.wait();
