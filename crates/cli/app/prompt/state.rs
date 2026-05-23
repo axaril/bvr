@@ -1,8 +1,10 @@
-use super::{
-    cursor::{Cursor, CursorState},
-    viewport::Viewport,
+use crate::{
+    components::{
+        cursor::{Cursor, CursorState},
+        viewport::Viewport,
+    },
+    direction::Direction,
 };
-use crate::direction::Direction;
 
 #[derive(Clone, Copy)]
 pub enum PromptDelta {
@@ -78,8 +80,8 @@ impl PromptApp {
         self.viewport.fit(1, viewport_width);
         match self.cursor.state() {
             Cursor::Singleton(i)
-            | Cursor::Selection(i, _, super::cursor::SelectionOrigin::Left)
-            | Cursor::Selection(_, i, super::cursor::SelectionOrigin::Right) => {
+            | Cursor::Selection(i, _, crate::components::cursor::SelectionOrigin::Left)
+            | Cursor::Selection(_, i, crate::components::cursor::SelectionOrigin::Right) => {
                 self.viewport.jump_horizontally_to(i);
             }
         }

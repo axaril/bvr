@@ -5,5 +5,4 @@ pub mod config;
 pub mod filters;
 pub mod instance;
 pub mod mux;
-pub mod prompt;
 pub mod viewer;

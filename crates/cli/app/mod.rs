@@ -7,6 +7,7 @@ mod mouse;
 mod terminal;
 mod widgets;
 
+mod prompt;
 mod status;
 
 use self::{
@@ -20,14 +21,13 @@ use crate::{
         actions::HelpAction,
         command::Command,
         terminal::{Terminal, TerminalState},
-        widgets::{MultiplexerWidget, PromptWidget},
+        widgets::MultiplexerWidget,
     },
     components::{
         config::filter::FilterConfigApp,
         cursor::Cursor,
         instance::Instance,
         mux::{MultiplexerApp, MultiplexerMode},
-        prompt::{self, PromptApp, PromptMovement},
     },
     direction::Direction,
     regex_compile,
@@ -496,12 +496,12 @@ impl App {
                     jump,
                 } => self.app.viewer.prompt.move_cursor(
                     direction,
-                    PromptMovement::new(
+                    prompt::Movement::new(
                         select,
                         match jump {
-                            actions::CommandJump::Word => prompt::PromptDelta::Word,
-                            actions::CommandJump::Boundary => prompt::PromptDelta::Boundary,
-                            actions::CommandJump::None => prompt::PromptDelta::Number(1),
+                            actions::CommandJump::Word => prompt::Delta::Word,
+                            actions::CommandJump::Boundary => prompt::Delta::Boundary,
+                            actions::CommandJump::None => prompt::Delta::Number(1),
                         },
                     ),
                 ),
@@ -1164,7 +1164,7 @@ pub struct Viewer {
     mode: InputMode,
     mux: MultiplexerApp,
     status: status::State,
-    prompt: PromptApp,
+    prompt: prompt::State,
     regex_cache: Option<RegexCache>,
     filter_config: FilterConfigApp,
     help: help::HelpManual,
@@ -1176,7 +1176,7 @@ impl Viewer {
     pub fn new() -> Self {
         Self {
             mode: InputMode::Normal,
-            prompt: PromptApp::new(),
+            prompt: prompt::State::new(),
             mux: MultiplexerApp::new(),
             status: status::State::new(),
             regex_cache: None,
@@ -1324,7 +1324,7 @@ impl Viewer {
         .render(mux_chunk, f.buffer_mut(), handler);
 
         let mut cursor = None;
-        PromptWidget {
+        prompt::Widget {
             mode: self.mode,
             prompt: &mut self.prompt,
             cursor: &mut cursor,
