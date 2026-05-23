@@ -55,22 +55,22 @@ pub mod regex {
 
     /// Rainbow colors for nested capture groups `()` — cycles by nesting depth.
     pub const GROUP: [Color; 5] = [
-        Color::Indexed(39),  // bright blue   – depth 0
-        Color::Indexed(82),  // bright green  – depth 1
-        Color::Indexed(214), // orange        – depth 2
-        Color::Indexed(170), // magenta       – depth 3
-        Color::Indexed(44),  // cyan          – depth 4
+        Color::Indexed(82),  // bright green
+        Color::Indexed(39),  // bright blue
+        Color::Indexed(44),  // cyan
+        Color::Indexed(170), // magenta
+        Color::Indexed(214), // orange
     ];
     /// `[` and `]` character-class delimiters.
-    pub const CLASS: Color = Color::Indexed(222); // light yellow
+    pub const CLASS: Color = Color::Yellow;
     /// Quantifiers: `*`, `+`, `?`, `{n,m}` and their lazy variants.
-    pub const QUANTIFIER: Color = Color::Indexed(141); // light purple
+    pub const QUANTIFIER: Color = Color::Blue;
     /// Anchors: `^` and `$`.
-    pub const ANCHOR: Color = Color::Indexed(120); // light green
+    pub const ANCHOR: Color = Color::Magenta;
     /// Escape sequences: `\d`, `\w`, `\.`, etc.
-    pub const ESCAPE: Color = Color::Indexed(81); // sky blue
+    pub const ESCAPE: Color = Color::Yellow;
     /// Other metacharacters: `.` (any-char) and `|` (alternation).
-    pub const META: Color = Color::Indexed(203); // salmon
+    pub const META: Color = Color::Cyan;
 }
 
 pub enum ColorSelector {
