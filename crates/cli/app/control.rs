@@ -8,6 +8,7 @@ pub enum InputMode {
     Visual,
     Filter,
     Config,
+    Help,
 }
 
 impl InputMode {

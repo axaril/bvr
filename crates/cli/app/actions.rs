@@ -15,7 +15,7 @@ pub enum Action {
     Filter(FilterAction),
     Config(ConfigAction),
     Command(CommandAction),
-    ExportFile { path: PathBuf },
+    Help(HelpAction),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -115,4 +115,13 @@ pub enum CommandJump {
     Word,
     Boundary,
     None,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum HelpAction {
+    PanVertical {
+        direction: Direction,
+        delta: ViewDelta,
+    },
 }

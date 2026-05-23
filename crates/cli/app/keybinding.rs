@@ -5,7 +5,7 @@ use super::{
     },
     control::ViewDelta,
 };
-use crate::direction::Direction;
+use crate::{app::actions::HelpAction, direction::Direction};
 use crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use serde::{Deserialize, Deserializer, Serialize};
 use std::{collections::HashMap, fmt, path::Path, str::FromStr};
@@ -316,6 +316,9 @@ pub struct KeybindingConfig {
     /// Prompt mode keybindings.
     #[serde(default)]
     pub prompt: ModeBindings,
+    /// Help mode keybindings.
+    #[serde(default)]
+    pub help: ModeBindings,
 }
 
 impl KeybindingConfig {
@@ -340,6 +343,7 @@ impl KeybindingConfig {
             InputMode::Filter => &self.filter,
             InputMode::Config => &self.config,
             InputMode::Prompt(_) => &self.prompt,
+            InputMode::Help => &self.help,
         };
 
         mode_bindings
@@ -517,6 +521,35 @@ impl Keybinding {
                     direction: Direction::back_if(c == 'N'),
                     delta: ViewDelta::Match,
                     target_view: None,
+                })),
+                _ => None,
+            },
+            InputMode::Help => match key.code {
+                KeyCode::Up | KeyCode::Down => Some(Action::Help(HelpAction::PanVertical {
+                    direction: Direction::back_if(key.code == KeyCode::Up),
+                    delta: if key.modifiers.contains(KeyModifiers::SHIFT) {
+                        ViewDelta::HalfPage
+                    } else {
+                        ViewDelta::Number { value: 1 }
+                    },
+                })),
+                KeyCode::Home | KeyCode::Char('g') => Some(Action::Help(HelpAction::PanVertical {
+                    direction: Direction::Back,
+                    delta: ViewDelta::Boundary,
+                })),
+                KeyCode::PageUp | KeyCode::PageDown | KeyCode::Char(' ') => {
+                    Some(Action::Help(HelpAction::PanVertical {
+                        direction: Direction::back_if(key.code == KeyCode::PageUp),
+                        delta: ViewDelta::Page,
+                    }))
+                }
+                KeyCode::Char(c @ ('u' | 'd')) => Some(Action::Help(HelpAction::PanVertical {
+                    direction: Direction::back_if(c == 'u'),
+                    delta: ViewDelta::HalfPage,
+                })),
+                KeyCode::Char(c @ ('N' | 'n')) => Some(Action::Help(HelpAction::PanVertical {
+                    direction: Direction::back_if(c == 'N'),
+                    delta: ViewDelta::Match,
                 })),
                 _ => None,
             },

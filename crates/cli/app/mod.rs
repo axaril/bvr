@@ -5,6 +5,7 @@ mod keybinding;
 mod mouse;
 mod terminal;
 mod widgets;
+mod help;
 
 use self::{
     actions::{Action, CommandAction, NormalAction, VisualAction},
@@ -14,9 +15,7 @@ use self::{
 };
 use crate::{
     app::{
-        command::Command,
-        terminal::{Terminal, TerminalState},
-        widgets::{MultiplexerWidget, PromptWidget},
+        actions::HelpAction, command::Command, terminal::{Terminal, TerminalState}, widgets::{MultiplexerWidget, PromptWidget}
     },
     components::{
         config::filter::FilterConfigApp,
@@ -35,12 +34,7 @@ use bvr_core::{SegBuffer, err::Error, index::BoxedStream, matches::CompositeStra
 use crossterm::{clipboard::CopyToClipboard, event};
 use regex::bytes::Regex;
 use std::{
-    borrow::Cow,
-    collections::VecDeque,
-    fs::OpenOptions,
-    num::NonZeroUsize,
-    path::{Path, PathBuf},
-    time::{Duration, Instant},
+    borrow::Cow, collections::VecDeque, fs::OpenOptions, num::NonZeroUsize, path::{Path, PathBuf}, time::{Duration, Instant}
 };
 
 pub struct State {
@@ -81,7 +75,7 @@ impl App {
             commands: Vec::new(),
         };
 
-        // quit is a built-in command that always exists, but add for completion
+        app.add_command(Command::new("help", &["h"]).set_action(Self::command_help));
         app.add_command(Command::new("quit", &["q"]).set_action(Self::command_quit));
         app.add_command(Command::new("mcap", &[]).set_action(Self::command_mcap));
         app.add_command(
@@ -122,6 +116,8 @@ impl App {
                     Command::new("intersect", &["i"]).set_action(Self::command_filter_intersect),
                 ),
         );
+
+        app.app.viewer.help = help::HelpManual::generate(&app.commands);
 
         app
     }
@@ -209,6 +205,14 @@ impl App {
     fn process_action(&mut self, action: Action) -> Result<bool> {
         match action {
             Action::Exit => return Ok(false),
+            Action::Help(action) => match action {
+                HelpAction::PanVertical {
+                    direction,
+                    delta,
+                } => {
+                    self.app.viewer.help.pan_vertically(direction, delta);
+                }
+            },
             Action::SwitchMode(new_mode) => {
                 let old_mode = self.app.viewer.mode;
                 self.app.viewer.mode = new_mode;
@@ -452,6 +456,7 @@ impl App {
                         InputMode::Normal
                         | InputMode::Visual
                         | InputMode::Filter
+                        | InputMode::Help
                         | InputMode::Config => unreachable!(),
                     };
                     return result;
@@ -510,33 +515,6 @@ impl App {
                     }
                 }
             },
-            Action::ExportFile { path } => {
-                if let Some(instance) = self.app.viewer.mux.active_mut() {
-                    if let Err(err) = OpenOptions::new()
-                        .create_new(true)
-                        .write(true)
-                        .truncate(true)
-                        .open(&path)
-                        .map_err(Error::from)
-                        .and_then(|mut file| instance.write_bytes(&mut file))
-                    {
-                        self.app
-                            .viewer
-                            .status
-                            .msg(format!("{}: {err}", path.display()));
-                    } else {
-                        self.app
-                            .viewer
-                            .status
-                            .msg(format!("{}: export complete", path.display()));
-                    }
-                } else {
-                    self.app
-                        .viewer
-                        .status
-                        .msg(String::from("No active instances"));
-                }
-            }
         };
 
         Ok(true)
@@ -746,6 +724,10 @@ impl App {
         }
 
         true
+    }
+
+    fn command_help(&mut self, _: &[&str]) {
+        self.app.viewer.mode = InputMode::Help;
     }
 
     fn command_quit(&mut self, _: &[&str]) {
@@ -982,7 +964,31 @@ impl App {
             return;
         };
         let path = PathBuf::from(path);
-        self.action_queue.push_back(Action::ExportFile { path });
+        if let Some(instance) = self.app.viewer.mux.active_mut() {
+            if let Err(err) = OpenOptions::new()
+                .create_new(true)
+                .write(true)
+                .truncate(true)
+                .open(&path)
+                .map_err(Error::from)
+                .and_then(|mut file| instance.write_bytes(&mut file))
+            {
+                self.app
+                    .viewer
+                    .status
+                    .msg(format!("{}: {err}", path.display()));
+            } else {
+                self.app
+                    .viewer
+                    .status
+                    .msg(format!("{}: export complete", path.display()));
+            }
+        } else {
+            self.app
+                .viewer
+                .status
+                .msg(String::from("No active instances"));
+        }
     }
 
     fn complete_command(&self, buf: &str) -> Vec<&'static str> {
@@ -1066,6 +1072,7 @@ pub struct Viewer {
     prompt: PromptApp,
     regex_cache: Option<RegexCache>,
     filter_config: FilterConfigApp,
+    help: help::HelpManual,
     gutter: bool,
     linked_filters: bool,
 }
@@ -1081,6 +1088,7 @@ impl Viewer {
             filter_config: FilterConfigApp::new(),
             gutter: true,
             linked_filters: false,
+            help: help::HelpManual::new(),
         }
     }
 
@@ -1199,6 +1207,7 @@ impl Viewer {
             | InputMode::Normal
             | InputMode::Visual
             | InputMode::Filter
+            | InputMode::Help
             | InputMode::Config => {
                 self.regex_cache = None;
             }
@@ -1211,6 +1220,7 @@ impl Viewer {
             config: &mut self.filter_config,
             gutter: self.gutter,
             linked_filters: self.linked_filters,
+            help: &mut self.help,
             regex: self
                 .regex_cache
                 .as_ref()
