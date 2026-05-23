@@ -1,4 +1,6 @@
-use super::{filters::Compositor, viewport::Viewport};
+use crate::app::filters;
+
+use super::{viewport::Viewport};
 use bvr_core::{LineSet, SegBuffer, SegStr};
 use ratatui::style::Color;
 use std::collections::VecDeque;
@@ -98,7 +100,7 @@ impl ViewCache {
     pub fn cache_view(
         &mut self,
         buf: &SegBuffer,
-        compositor: Option<&Compositor>,
+        compositor: Option<&filters::State>,
     ) -> impl Iterator<Item = &CachedLine> {
         if self.follow_output {
             self.curr_viewport
@@ -145,7 +147,7 @@ impl ViewCache {
         self.cache.iter()
     }
 
-    pub fn color_cache(&mut self, compositor: &Compositor) {
+    pub fn color_cache(&mut self, compositor: &filters::State) {
         if self.need_recoloring {
             self.reset_color_cache();
             self.need_recoloring = compositor

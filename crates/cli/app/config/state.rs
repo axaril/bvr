@@ -1,8 +1,7 @@
 use crate::{
-    app::control::ViewDelta,
+    app::{control::ViewDelta, filters::FilterExportSet},
     components::{
         cursor::{Cursor, CursorState, SelectionOrigin},
-        filters::FilterExportSet,
         viewport::Viewport,
     },
     direction::Direction,
