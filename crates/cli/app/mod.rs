@@ -82,7 +82,7 @@ impl App {
         };
 
         // quit is a built-in command that always exists, but add for completion
-        app.add_command(Command::new("quit", &["q"]));
+        app.add_command(Command::new("quit", &["q"]).set_action(Self::command_quit));
         app.add_command(Command::new("mcap", &[]).set_action(Self::command_mcap));
         app.add_command(
             Command::new("realpath", &["rp", "readlink", "rl"]).set_action(Self::command_realpath),
@@ -735,42 +735,41 @@ impl App {
     }
 
     fn process_command(&mut self, command: &str) -> bool {
-        let mut parts = command.split_whitespace();
-
-        match parts.next() {
-            Some("quit" | "q") => return false,
-            Some(cmd) => {
-                if let Ok(line_number) = cmd.parse::<usize>() {
-                    if let Some(instance) = self.app.viewer.mux.active_mut() {
-                        if let Some(idx) = instance.nearest_index(line_number) {
-                            instance.viewport_mut().jump_vertically_to(idx);
-                        }
-                    }
-                } else {
-                    self.process_command_system(command)
+        if let Ok(line_number) = command.parse::<usize>() {
+            if let Some(instance) = self.app.viewer.mux.active_mut() {
+                if let Some(idx) = instance.nearest_index(line_number) {
+                    instance.viewport_mut().jump_vertically_to(idx);
                 }
             }
-            None => return true,
+        } else {
+            self.process_command_system(command)
         }
 
         true
     }
 
+    fn command_quit(&mut self, _: &[&str]) {
+        self.action_queue.push_back(Action::Exit);
+    }
+
     fn command_mcap(&mut self, _: &[&str]) {
-        if let Err(_) = self.term.toggle_mouse_capture() {
-            self.app
-                .viewer
-                .status
-                .msg("mouse capture toggle failed".to_string());
-        } else {
-            self.app.viewer.status.msg(format!(
-                "mouse capture {}",
-                if self.term.mouse_capture {
-                    "enabled"
-                } else {
-                    "disabled"
-                }
-            ));
+        match self.term.toggle_mouse_capture() {
+            Ok(_) => {
+                self.app.viewer.status.msg(format!(
+                    "mouse capture {}",
+                    if self.term.mouse_capture {
+                        "enabled"
+                    } else {
+                        "disabled"
+                    }
+                ));
+            }
+            Err(_) => {
+                self.app
+                    .viewer
+                    .status
+                    .msg("mouse capture toggle failed".to_string());
+            }
         }
     }
 
