@@ -9,11 +9,11 @@ readme = "README.md"
 
 [dependencies]
 thiserror = "2.0"
-memchr = "2.7"
+memchr = "2.8"
 memmap2 = "0.9"
 lru = { workspace = true }
 regex = { workspace = true }
-arc-swap = "1.7"
+arc-swap = "1.9"
 
 [dev-dependencies]
 anyhow = "1.0"
