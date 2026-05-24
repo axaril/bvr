@@ -28,6 +28,7 @@ pub fn split_half(area: Rect) -> Option<[Rect; 2]> {
     split_left(area, area.width / 2)
 }
 
+#[allow(dead_code)]
 pub fn split_columns(area: Rect, n: u16) -> Vec<Rect> {
     if n == 0 {
         return Vec::new();

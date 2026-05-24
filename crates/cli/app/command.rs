@@ -81,7 +81,7 @@ impl CommandSystem {
 
         if ends_with_space {
             // Every token is complete; navigate the hierarchy and offer the next level.
-            let mut current: &[Command] = &self.commands;
+            let mut current = &self.commands;
             for token in &tokens {
                 match find_cmd(current, token) {
                     Some(cmd) if !cmd.subcommands.is_empty() => {
@@ -99,7 +99,7 @@ impl CommandSystem {
                 None => return vec![],
             };
 
-            let mut current: &[Command] = &self.commands;
+            let mut current = &self.commands;
             for token in &tokens {
                 match find_cmd(current, token) {
                     Some(cmd) if !cmd.subcommands.is_empty() => {
