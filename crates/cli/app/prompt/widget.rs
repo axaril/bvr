@@ -41,8 +41,8 @@ impl<'a> Widget for PromptWidget<'a> {
         let [indicator_area, data_area] = Self::split_prompt(area);
 
         let cursor = self.prompt.cursor();
-        let left = self.prompt.viewport().left();
-        self.prompt.update_viewport(usize::from(area.width));
+        let left = self.prompt.view_bounds().left();
+        self.prompt.update_view_bounds(usize::from(area.width));
         let cmd_buf = self.prompt.buf();
 
         match mode {

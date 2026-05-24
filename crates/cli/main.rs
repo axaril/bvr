@@ -3,7 +3,7 @@ mod colors;
 mod cursor;
 mod direction;
 mod text;
-mod viewport;
+mod view_bounds;
 
 use anyhow::Result;
 use app::State;

@@ -2,7 +2,7 @@ use crate::{
     app::{control::ViewDelta, filters::FilterExportSet},
     cursor::{Cursor, CursorState, SelectionOrigin},
     direction::Direction,
-    viewport::Viewport,
+    view_bounds::ViewBounds,
 };
 
 use super::{APP_ID, FILTER_FILE, storage_dir_create};
@@ -13,7 +13,7 @@ use std::{cell::OnceCell, path::PathBuf};
 pub struct FilterConfigState {
     path: Option<PathBuf>,
     state: OnceCell<LoadedFilterData>,
-    viewport: Viewport,
+    bounds: ViewBounds,
     cursor: CursorState,
 }
 
@@ -31,7 +31,7 @@ impl FilterConfigState {
                 .map(|path| path.join(FILTER_FILE))
                 .ok(),
             state: OnceCell::new(),
-            viewport: Viewport::new(),
+            bounds: ViewBounds::new(),
             cursor: CursorState::new(),
         }
     }
@@ -113,24 +113,24 @@ impl FilterConfigState {
         })
     }
 
-    pub fn update_viewport(&mut self, viewport_height: usize) {
-        self.viewport.fit(viewport_height, 0);
-        self.viewport.clamp(self.filters().len());
+    pub fn update_view_bounds(&mut self, height: usize) {
+        self.bounds.fit(height, 0);
+        self.bounds.clamp(self.filters().len());
     }
 
     pub fn view(&self) -> impl Iterator<Item = (usize, &FilterExportSet)> {
         self.filters()
             .iter()
             .enumerate()
-            .skip(self.viewport.top())
-            .take(self.viewport.height())
+            .skip(self.bounds.top())
+            .take(self.bounds.height())
     }
 
     pub fn move_select(&mut self, dir: Direction, select: bool, delta: ViewDelta) {
         let delta = match delta {
             ViewDelta::Number { value } => usize::from(value),
-            ViewDelta::Page => self.viewport.height(),
-            ViewDelta::HalfPage => self.viewport.height().div_ceil(2),
+            ViewDelta::Page => self.bounds.height(),
+            ViewDelta::HalfPage => self.bounds.height().div_ceil(2),
             ViewDelta::Boundary => usize::MAX,
             ViewDelta::Match => unimplemented!("there is no result jumping for filters"),
         };
@@ -144,7 +144,7 @@ impl FilterConfigState {
             | Cursor::Selection(i, _, SelectionOrigin::Left)
             | Cursor::Selection(_, i, SelectionOrigin::Right) => i,
         };
-        self.viewport.jump_vertically_to(i);
+        self.bounds.jump_vertically_to(i);
     }
 
     #[allow(dead_code)]

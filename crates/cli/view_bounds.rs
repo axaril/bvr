@@ -1,7 +1,7 @@
 use crate::direction::Direction;
 
 #[derive(Clone, Copy)]
-pub struct Viewport {
+pub struct ViewBounds {
     /// Top of the view
     top: usize,
     /// Left of the view
@@ -12,7 +12,7 @@ pub struct Viewport {
     width: usize,
 }
 
-impl Viewport {
+impl ViewBounds {
     #[inline]
     pub const fn new() -> Self {
         Self {

@@ -1,7 +1,7 @@
 use crate::{
     cursor::{Cursor, CursorState, SelectionOrigin},
     direction::Direction,
-    viewport::Viewport,
+    view_bounds::ViewBounds,
 };
 
 #[derive(Clone, Copy)]
@@ -39,7 +39,7 @@ pub struct PromptApp {
     index: usize,
     buf: String,
     cursor: CursorState,
-    viewport: Viewport,
+    bounds: ViewBounds,
     completion_cycle: Option<CompletionCycle>,
 }
 
@@ -50,7 +50,7 @@ impl PromptApp {
             index: 0,
             buf: String::new(),
             cursor: CursorState::new(),
-            viewport: Viewport::new(),
+            bounds: ViewBounds::new(),
             completion_cycle: None,
         }
     }
@@ -70,17 +70,17 @@ impl PromptApp {
     }
 
     #[inline(always)]
-    pub fn viewport(&self) -> &Viewport {
-        &self.viewport
+    pub fn view_bounds(&self) -> &ViewBounds {
+        &self.bounds
     }
 
-    pub fn update_viewport(&mut self, viewport_width: usize) {
-        self.viewport.fit(1, viewport_width);
+    pub fn update_view_bounds(&mut self, width: usize) {
+        self.bounds.fit(1, width);
         match self.cursor.state() {
             Cursor::Singleton(i)
             | Cursor::Selection(i, _, SelectionOrigin::Left)
             | Cursor::Selection(_, i, SelectionOrigin::Right) => {
-                self.viewport.jump_horizontally_to(i);
+                self.bounds.jump_horizontally_to(i);
             }
         }
     }

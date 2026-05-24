@@ -22,7 +22,7 @@ impl FilterViewerWidget<'_> {
 
         let cursor_state = self.compositor.cursor().state();
 
-        self.compositor.update_viewport(area.height as usize);
+        self.compositor.update_view_bounds(area.height as usize);
         let view = self.compositor.view();
 
         (area.y..area.bottom())

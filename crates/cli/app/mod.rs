@@ -262,7 +262,7 @@ impl App {
             Action::Exit => return Ok(false),
             Action::Help(action) => match action {
                 HelpAction::PanVertical { direction, delta } => {
-                    self.app.viewer.help.pan_vertically(direction, delta);
+                    self.app.viewer.help.pan_vertical(direction, delta);
                 }
             },
             Action::SwitchMode(new_mode) => {
@@ -312,7 +312,7 @@ impl App {
                     target_view,
                 } => {
                     if let Some(instance) = self.app.viewer.get_target_view(target_view) {
-                        instance.move_viewport_vertical(direction, delta)
+                        instance.pan_vertical(direction, delta)
                     }
                 }
                 NormalAction::PanHorizontal {
@@ -321,7 +321,7 @@ impl App {
                     target_view,
                 } => {
                     if let Some(instance) = self.app.viewer.get_target_view(target_view) {
-                        instance.move_viewport_horizontal(direction, delta)
+                        instance.pan_horizontal(direction, delta)
                     }
                 }
                 NormalAction::FollowOutput => {
