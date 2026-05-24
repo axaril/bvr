@@ -23,7 +23,3 @@ fn storage_dir_create(app_id: &str) -> Result<PathBuf> {
     std::fs::create_dir_all(&path)?;
     Ok(path)
 }
-
-pub fn hydrate(state: &mut State) -> Widget<'_> {
-    Widget { app: state }
-}

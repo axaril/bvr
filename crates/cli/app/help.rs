@@ -1,6 +1,8 @@
-use ratatui::{prelude::*, widgets::Paragraph};
+use std::sync::OnceLock;
 
-use crate::{app::control::ViewDelta, direction::Direction};
+use ratatui::{prelude::*, widgets::{Block, Paragraph}};
+
+use crate::{app::control::ViewDelta, colors, direction::Direction};
 
 pub struct HelpManual {
     top: usize,
@@ -105,8 +107,12 @@ impl HelpManual {
         [left_chunk, right_chunk]
     }
 
-
     pub fn render(&self, area: ratatui::prelude::Rect, buf: &mut ratatui::buffer::Buffer) {
+        static WIDGET_BLOCK: OnceLock<Block> = OnceLock::new();
+        WIDGET_BLOCK
+            .get_or_init(|| Block::new().bg(colors::BLACK))
+            .render(area, buf);
+
         let [command_area, description_area] = Self::split_left(area, self.max_command_width as u16 + 4);
         self.command_column
             .clone()

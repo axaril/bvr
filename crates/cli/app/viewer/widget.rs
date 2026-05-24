@@ -1,4 +1,4 @@
-use super::super::{
+use crate::app::{
     actions::{Action, NormalAction},
     control::ViewDelta,
     mouse::MouseHandler,
@@ -16,11 +16,11 @@ use regex::bytes::Regex;
 use unicode_segmentation::UnicodeSegmentation;
 
 pub struct LineViewerWidget<'a> {
-    pub(super) view_index: usize,
-    pub(super) instance: &'a mut Instance,
-    pub(super) show_selection: bool,
-    pub(super) gutter: bool,
-    pub(super) regex: Option<&'a Regex>,
+    pub view_index: usize,
+    pub instance: &'a mut Instance,
+    pub show_selection: bool,
+    pub gutter: bool,
+    pub regex: Option<&'a Regex>,
 }
 
 struct LineRenderData<'a> {
