@@ -929,11 +929,11 @@ impl App {
     }
 
     fn command_mux_tabs(&mut self, _: &[&str]) {
-        self.app.viewer.mux.set_mode(mux::Mode::Tabs);
+        self.app.viewer.mux.set_mode(mux::Mode::ActiveOnly);
     }
 
     fn command_mux_panes(&mut self, _: &[&str]) {
-        self.app.viewer.mux.set_mode(mux::Mode::Panes);
+        self.app.viewer.mux.set_mode(mux::Mode::SplitView);
     }
 
     fn command_mux(&mut self, _: &[&str]) {
@@ -1293,73 +1293,58 @@ impl Viewer {
                     })
                 }
             }
-            InputMode::Prompt(_)
-            | InputMode::Normal
-            | InputMode::Visual
-            | InputMode::Filter
-            | InputMode::Help
-            | InputMode::Config => {
+            _ => {
                 self.regex_cache = None;
             }
         }
 
-        let [tab_chunk, mut mux_chunk, status_chunk, cmd_chunk] = mux::split_mux(f.area());
+        let [tab_chunk, mut mux_chunk, status_chunk, cmd_chunk] = mux::split_mux(f.area())?;
 
+        let buf = f.buffer_mut();
         let active_index = self.mux.active_index();
-        mux::Widget::hydrate(&mut self.mux)
-            .override_mode(Some(mux::Mode::Panes))
-            .render(
-                tab_chunk,
-                f.buffer_mut(),
-                |pane_chunk, buf, view_index, instance| {
-                    mux::TabWidget {
-                        view_index,
-                        name: instance.name(),
-                        active: active_index == view_index,
-                    }
-                    .render(pane_chunk, buf, handler);
-                },
-            );
 
-        match self.mode {
-            InputMode::Filter => {
-                mux::filter_area(&mut mux_chunk, |area| {
+        mux::Widget::hydrate(&mut self.mux)
+            .override_mode(Some(mux::Mode::SplitView))
+            .render(tab_chunk, buf, |pane_chunk, buf, view_index, instance| {
+                mux::TabWidget {
+                    view_index,
+                    name: instance.name(),
+                    active: active_index == view_index,
+                }
+                .render(pane_chunk, buf, handler);
+            });
+
+        if let InputMode::Filter | InputMode::Config | InputMode::Help = self.mode {
+            const FILTER_MAX_HEIGHT: u16 = 10;
+            let [view_chunk, area] = mux::split_bottom(mux_chunk, FILTER_MAX_HEIGHT).unwrap();
+            mux_chunk = view_chunk;
+
+            match self.mode {
+                InputMode::Filter => {
                     mux::Widget::hydrate(&mut self.mux)
-                        .override_mode(self.linked_filters.then_some(mux::Mode::Tabs))
-                        .render(
-                            area,
-                            f.buffer_mut(),
-                            |pane_chunk, buf, view_index, instance| {
-                                filters::Widget {
-                                    view_index,
-                                    compositor: instance.compositor_mut(),
-                                }
-                                .render(pane_chunk, buf, handler);
-                            },
-                        );
-                });
-            }
-            InputMode::Config => {
-                mux::filter_area(&mut mux_chunk, |area| {
-                    config::Widget::hydrate(&mut self.filter_config).render(
-                        area,
-                        f.buffer_mut(),
-                        handler,
-                    );
-                });
-            }
-            InputMode::Help => {
-                mux::filter_area(&mut mux_chunk, |area| {
+                        .override_mode(self.linked_filters.then_some(mux::Mode::ActiveOnly))
+                        .render(area, buf, |pane_chunk, buf, view_index, instance| {
+                            filters::Widget {
+                                view_index,
+                                compositor: instance.compositor_mut(),
+                            }
+                            .render(pane_chunk, buf, handler);
+                        });
+                }
+                InputMode::Config => {
+                    config::Widget::hydrate(&mut self.filter_config).render(area, buf, handler);
+                }
+                InputMode::Help => {
                     self.help.set_height(usize::from(area.height));
-                    self.help.render(area, f.buffer_mut());
-                });
+                    self.help.render(area, buf);
+                }
+                _ => {}
             }
-            _ => {}
         }
 
         mux::Widget::hydrate(&mut self.mux).render(
             mux_chunk,
-            f.buffer_mut(),
+            buf,
             |pane_chunk, buf, view_index, instance| {
                 viewer::Widget {
                     view_index,
@@ -1379,7 +1364,7 @@ impl Viewer {
         status::Widget::new(self.mode)
             .with_instance(self.mux.active_mut().map(|v| &*v))
             .with_message(self.status.get_message_update().as_deref())
-            .render(status_chunk, f.buffer_mut());
+            .render(status_chunk, buf);
 
         let mut cursor = None;
         prompt::Widget {
@@ -1387,7 +1372,7 @@ impl Viewer {
             prompt: &mut self.prompt,
             cursor: &mut cursor,
         }
-        .render(cmd_chunk, f.buffer_mut());
+        .render(cmd_chunk, buf);
 
         cursor
     }

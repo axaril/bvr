@@ -2,15 +2,15 @@ use crate::{components::instance::Instance, direction::Direction};
 
 #[derive(Clone, Copy)]
 pub enum MultiplexerMode {
-    Panes,
-    Tabs,
+    SplitView,
+    ActiveOnly,
 }
 
 impl MultiplexerMode {
     pub fn swap(self) -> Self {
         match self {
-            Self::Panes => Self::Tabs,
-            Self::Tabs => Self::Panes,
+            Self::SplitView => Self::ActiveOnly,
+            Self::ActiveOnly => Self::SplitView,
         }
     }
 }
@@ -25,7 +25,7 @@ impl MultiplexerApp {
     pub fn new() -> Self {
         Self {
             instances: Vec::new(),
-            mode: MultiplexerMode::Tabs,
+            mode: MultiplexerMode::ActiveOnly,
             active: 0,
         }
     }
