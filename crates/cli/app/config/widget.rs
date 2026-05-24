@@ -13,23 +13,10 @@ impl<'a> ConfigViewerWidget<'a> {
         Self { app: state }
     }
 
-    fn split_left(area: Rect, left_width: u16) -> [Rect; 2] {
-        let mut left_chunk = area;
-        left_chunk.width = left_width;
-
-        let mut right_chunk = area;
-        right_chunk.x += left_width;
-        right_chunk.width = right_chunk.width.saturating_sub(left_width);
-
-        [left_chunk, right_chunk]
-    }
-
-    fn split_half(area: Rect) -> [Rect; 2] {
-        Self::split_left(area, area.width / 2)
-    }
-
     pub fn render(self, area: Rect, buf: &mut Buffer, handle: &mut MouseHandler) {
-        let [left_chunk, right_chunk] = Self::split_half(area);
+        let Some([left_chunk, right_chunk]) = crate::split::split_half(area) else {
+            return;
+        };
         {
             static WIDGET_BLOCK: OnceLock<Block> = OnceLock::new();
             WIDGET_BLOCK

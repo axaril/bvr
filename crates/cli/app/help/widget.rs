@@ -60,17 +60,6 @@ impl<'a> HelpWidget<'a> {
         }
     }
 
-    fn split_left(area: Rect, left_width: u16) -> [Rect; 2] {
-        let mut left_chunk = area;
-        left_chunk.width = left_width;
-
-        let mut right_chunk = area;
-        right_chunk.x += left_width;
-        right_chunk.width = right_chunk.width.saturating_sub(left_width);
-
-        [left_chunk, right_chunk]
-    }
-
     pub fn render(&self, area: Rect, buf: &mut Buffer) {
         static WIDGET_BLOCK: OnceLock<Block> = OnceLock::new();
         WIDGET_BLOCK
@@ -91,7 +80,11 @@ impl<'a> HelpWidget<'a> {
         let command_column = Paragraph::new(command_lines);
         let description_column = Paragraph::new(description_lines);
 
-        let [command_area, description_area] = Self::split_left(area, max_command_width as u16 + 4);
+        let Some([command_area, description_area]) =
+            crate::split::split_left(area, max_command_width as u16 + 4)
+        else {
+            return;
+        };
         command_column
             .scroll((self.state.view_bounds().top() as u16, 0))
             .render(command_area, buf);

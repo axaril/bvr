@@ -15,19 +15,6 @@ pub struct PromptWidget<'a> {
     pub cursor: &'a mut Option<(u16, u16)>,
 }
 
-impl PromptWidget<'_> {
-    pub fn split_prompt(area: Rect) -> [Rect; 2] {
-        let mut indicator_chunk = area;
-        indicator_chunk.width = 1;
-
-        let mut data_chunk = area;
-        data_chunk.width -= 1;
-        data_chunk.x += 1;
-
-        [indicator_chunk, data_chunk]
-    }
-}
-
 impl<'a> Widget for PromptWidget<'a> {
     fn render(self, area: Rect, buf: &mut Buffer) {
         let InputMode::Prompt(mode) = self.mode else {
@@ -38,7 +25,9 @@ impl<'a> Widget for PromptWidget<'a> {
             return;
         };
 
-        let [indicator_area, data_area] = Self::split_prompt(area);
+        let Some([indicator_area, data_area]) = crate::split::split_left(area, 1) else {
+            return;
+        };
 
         let cursor = self.prompt.cursor();
         let left = self.prompt.view_bounds().left();
