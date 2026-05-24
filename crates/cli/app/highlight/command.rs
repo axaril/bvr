@@ -48,7 +48,7 @@ impl<'a> CommandHighlighter<'a> {
         Some(span)
     }
 
-    pub fn highlight(mut self, commands: &CommandSystem) -> Line<'a> {
+    pub fn highlight(mut self, commands: &CommandSystem) -> Vec<Span<'a>> {
         let mut cmd: Option<&Command> = None;
         let mut take_remaining_as_args = TakeRemaining::None;
 

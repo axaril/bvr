@@ -1,4 +1,3 @@
-mod highlight;
 mod state;
 mod widget;
 
