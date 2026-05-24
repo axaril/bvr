@@ -37,7 +37,7 @@ impl<'a> MultiplexerWidget<'a> {
         if !self.mux.is_empty() {
             let active = self.mux.active_index();
             match self.override_mode.unwrap_or(self.mux.mode()) {
-                Mode::Panes => {
+                Mode::SplitView => {
                     let split_chunks = Self::split_horizontal(area, self.mux.len());
                     for (view_index, (&pane_chunk, instance)) in split_chunks
                         .iter()
@@ -47,7 +47,7 @@ impl<'a> MultiplexerWidget<'a> {
                         draw(pane_chunk, buf, view_index, instance);
                     }
                 }
-                Mode::Tabs => {
+                Mode::ActiveOnly => {
                     let instance = self.mux.active_mut().unwrap();
                     let pane_chunk = area;
 
