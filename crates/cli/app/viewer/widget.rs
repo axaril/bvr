@@ -2,7 +2,7 @@ use crate::app::{
     actions::{Action, NormalAction},
     control::ViewDelta,
     mouse::MouseHandler,
-    viewer::instance::Instance,
+    viewer::{instance::Instance, virtual_view::CachedLine},
 };
 use crate::{app::actions::VisualAction, colors, cursor::Cursor, direction::Direction};
 use bitflags::bitflags;
@@ -19,15 +19,7 @@ pub struct ViewWidget<'a> {
     pub regex: Option<(Color, &'a Regex)>,
 }
 
-struct LineRenderData<'a> {
-    line_number: usize,
-    data: &'a str,
-    color: Color,
-    ty: LineType,
-}
-
 bitflags! {
-    #[derive(Clone)]
     struct LineType: u8 {
         const None = 0;
         const Origin = 1 << 0;
@@ -51,19 +43,19 @@ impl ViewWidget<'_> {
 
         self.instance
             .update_viewport(area.height as usize, area.width as usize);
-        let view = self.instance.view();
+
+        self.instance.populate_view();
+        let view = self.instance.view_cache();
 
         (area.y..area.bottom())
             .zip(view.map(Some).chain(std::iter::repeat(None)))
-            .for_each(|(y, line)| {
+            .for_each(|(y, line_data)| {
                 ViewerLineWidget {
-                    view_index: self.view_index,
+                    parent: &self,
                     start: left,
-                    line_data: line.map(|line| LineRenderData {
-                        line_number: line.line_number,
-                        data: &line.data,
-                        color: line.color,
-                        ty: match cursor_state {
+                    line_data,
+                    ty: if let Some(line) = line_data {
+                        match cursor_state {
                             Cursor::Singleton(i) => {
                                 if line.index == i {
                                     LineType::Origin
@@ -82,16 +74,17 @@ impl ViewWidget<'_> {
                                     LineType::Within
                                 }
                             }
-                        } | if line.bookmarked {
+                        }
+                        .union(if line.bookmarked {
                             LineType::Bookmarked
                         } else {
                             LineType::None
-                        },
-                    }),
-                    show_selection: self.show_selection,
+                        })
+                    } else {
+                        LineType::None
+                    },
                     itoa_buf: &mut itoa_buf,
                     gutter_size,
-                    regex: self.regex,
                 }
                 .render(Rect::new(area.x, y, area.width, 1), buf, handle);
             });
@@ -110,27 +103,27 @@ impl ViewWidget<'_> {
 }
 
 struct ViewerLineWidget<'a> {
-    view_index: usize,
-    line_data: Option<LineRenderData<'a>>,
+    parent: &'a ViewWidget<'a>,
+
+    line_data: Option<&'a CachedLine>,
 
     itoa_buf: &'a mut itoa::Buffer,
-    show_selection: bool,
     gutter_size: Option<u16>,
     start: usize,
-    regex: Option<(Color, &'a Regex)>,
+    ty: LineType,
 }
 
 impl ViewerLineWidget<'_> {
-    fn gutter_selection(line: &LineRenderData) -> &'static str {
-        if line.ty.contains(LineType::Origin) {
-            if line.ty.contains(LineType::OriginStart) {
+    fn gutter_selection(&self) -> &'static str {
+        if self.ty.contains(LineType::Origin) {
+            if self.ty.contains(LineType::OriginStart) {
                 "┌ "
-            } else if line.ty.contains(LineType::OriginEnd) {
+            } else if self.ty.contains(LineType::OriginEnd) {
                 "└"
             } else {
                 "▶"
             }
-        } else if line.ty.contains(LineType::Within) {
+        } else if self.ty.contains(LineType::Within) {
             "│"
         } else {
             ""
@@ -140,7 +133,7 @@ impl ViewerLineWidget<'_> {
     fn split_line(&self, area: Rect) -> (Option<Rect>, Option<Rect>, Rect) {
         const SPECIAL_SIZE: u16 = 3;
 
-        if self.gutter_size.is_none() && !self.show_selection {
+        if self.gutter_size.is_none() && !self.parent.show_selection {
             return (None, None, area);
         }
 
@@ -177,7 +170,7 @@ impl ViewerLineWidget<'_> {
         if let Some(gutter_chunk) = gutter_chunk {
             let ln_str = self.itoa_buf.format(line.line_number + 1);
             let ln = Line::raw(ln_str).alignment(Alignment::Right).fg(
-                if line.ty.contains(LineType::Bookmarked) {
+                if self.ty.contains(LineType::Bookmarked) {
                     colors::SELECT_ACCENT
                 } else {
                     colors::GUTTER_TEXT
@@ -188,13 +181,13 @@ impl ViewerLineWidget<'_> {
         }
 
         if let Some(type_chunk) = cursor_chunk {
-            Span::raw(Self::gutter_selection(line))
+            Span::raw(self.gutter_selection())
                 .fg(colors::SELECT_ACCENT)
                 .render(type_chunk, buf);
         }
 
         let data = {
-            let data = line.data;
+            let data = &line.data;
             let mut chars = data.grapheme_indices(true);
             let start = chars
                 .nth(self.start)
@@ -208,7 +201,7 @@ impl ViewerLineWidget<'_> {
             data.get(start..end).unwrap_or("Bad char boundary handling")
         };
 
-        let mut line_widget = if let Some((color, regex)) = self.regex
+        let mut line_widget = if let Some((color, regex)) = self.parent.regex
             && let Some(m) = regex.find(data.as_bytes())
         {
             let start = m.start();
@@ -224,7 +217,7 @@ impl ViewerLineWidget<'_> {
         };
 
         line_widget.style.fg = Some(line.color);
-        if line.ty.contains(LineType::Bookmarked) {
+        if self.ty.contains(LineType::Bookmarked) {
             line_widget.style.bg = Some(colors::SELECT_ACCENT);
         }
 
@@ -234,7 +227,7 @@ impl ViewerLineWidget<'_> {
             handle.on_mouse(area, |event| match event.kind {
                 MouseEventKind::Down(_) => Some(Action::Visual(VisualAction::ToggleLine {
                     line_number: line.line_number,
-                    target_view: self.view_index,
+                    target_view: self.parent.view_index,
                 })),
                 _ => None,
             });
