@@ -49,7 +49,7 @@ impl<'a> CommandHighlighter<'a> {
     }
 
     pub fn highlight(mut self, commands: &[Command]) -> Line<'a> {
-        let mut current_command: Option<&Command> = None;
+        let mut cmd: Option<&Command> = None;
         let mut take_remaining_as_args = TakeRemaining::None;
 
         while let Some(arg) = self.eat_arg() {
@@ -65,16 +65,16 @@ impl<'a> CommandHighlighter<'a> {
                 TakeRemaining::None => {}
             }
 
-            if let Some(cmd) = current_command.as_ref() {
-                let has_action = cmd.action.is_some();
-                let takes_args = !cmd.arguments.is_empty();
+            if let Some(current_cmd) = cmd.as_ref() {
+                let has_action = current_cmd.action.is_some();
+                let takes_args = !current_cmd.arguments.is_empty();
 
-                current_command = cmd
+                cmd = current_cmd
                     .subcommands
                     .iter()
                     .find(|cmd| cmd.name == arg.content || cmd.aliases.contains(&arg.content));
 
-                if let Some(_) = current_command {
+                if let Some(_) = cmd {
                     arg.fg(colors::COMMAND_ACCENT);
                 } else if has_action && takes_args {
                     arg.fg(colors::TEXT_ACTIVE);
@@ -87,11 +87,11 @@ impl<'a> CommandHighlighter<'a> {
                     break;
                 }
             } else {
-                current_command = commands
+                cmd = commands
                     .iter()
                     .find(|cmd| cmd.name == arg.content || cmd.aliases.contains(&arg.content));
 
-                if let Some(_) = current_command {
+                if let Some(_) = cmd {
                     arg.fg(colors::COMMAND_ACCENT);
                 } else {
                     arg.fg(colors::ERROR);
