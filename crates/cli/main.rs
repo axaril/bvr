@@ -2,6 +2,7 @@ mod app;
 mod colors;
 mod cursor;
 mod direction;
+mod split;
 mod text;
 mod view_bounds;
 

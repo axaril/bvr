@@ -1122,8 +1122,15 @@ impl Viewer {
 
         if let InputMode::Filter | InputMode::Config | InputMode::Help = self.mode {
             const FILTER_MAX_HEIGHT: u16 = 10;
-            let [view_chunk, area] = mux::split_bottom(mux_chunk, FILTER_MAX_HEIGHT).unwrap();
-            mux_chunk = view_chunk;
+            let mut area = mux_chunk;
+            if let Some([view_chunk, panel_area]) =
+                crate::split::split_bottom(mux_chunk, FILTER_MAX_HEIGHT)
+            {
+                mux_chunk = view_chunk;
+                area = panel_area;
+            } else {
+                mux_chunk = ratatui::layout::Rect::default();
+            }
 
             match self.mode {
                 InputMode::Filter => {
