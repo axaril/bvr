@@ -21,8 +21,10 @@ impl PromptWidget<'_> {
 
         [indicator_chunk, data_chunk]
     }
+}
 
-    pub fn render(self, area: Rect, buf: &mut Buffer) {
+impl<'a> Widget for PromptWidget<'a> {
+    fn render(self, area: Rect, buf: &mut Buffer) {
         let InputMode::Prompt(mode) = self.mode else {
             static WIDGET_BLOCK: OnceLock<Block> = OnceLock::new();
             WIDGET_BLOCK

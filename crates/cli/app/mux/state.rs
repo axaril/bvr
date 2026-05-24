@@ -1,5 +1,4 @@
-use super::instance::Instance;
-use crate::direction::Direction;
+use crate::{components::instance::Instance, direction::Direction};
 
 #[derive(Clone, Copy)]
 pub enum MultiplexerMode {

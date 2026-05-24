@@ -5,12 +5,13 @@ mod help;
 mod keybinding;
 mod mouse;
 mod terminal;
-mod widgets;
 
-mod prompt;
-mod status;
 mod config;
 pub mod filters;
+mod mux;
+mod prompt;
+mod status;
+mod viewer;
 
 use self::{
     actions::{Action, CommandAction, NormalAction, VisualAction},
@@ -23,13 +24,8 @@ use crate::{
         actions::HelpAction,
         command::Command,
         terminal::{Terminal, TerminalState},
-        widgets::MultiplexerWidget,
     },
-    components::{
-        cursor::Cursor,
-        instance::Instance,
-        mux::{MultiplexerApp, MultiplexerMode},
-    },
+    components::{cursor::Cursor, instance::Instance},
     direction::Direction,
     regex_compile,
 };
@@ -933,11 +929,11 @@ impl App {
     }
 
     fn command_mux_tabs(&mut self, _: &[&str]) {
-        self.app.viewer.mux.set_mode(MultiplexerMode::Tabs);
+        self.app.viewer.mux.set_mode(mux::Mode::Tabs);
     }
 
     fn command_mux_panes(&mut self, _: &[&str]) {
-        self.app.viewer.mux.set_mode(MultiplexerMode::Panes);
+        self.app.viewer.mux.set_mode(mux::Mode::Panes);
     }
 
     fn command_mux(&mut self, _: &[&str]) {
@@ -1163,7 +1159,7 @@ struct RegexCache {
 
 pub struct Viewer {
     mode: InputMode,
-    mux: MultiplexerApp,
+    mux: mux::State,
     status: status::State,
     prompt: prompt::State,
     regex_cache: Option<RegexCache>,
@@ -1178,7 +1174,7 @@ impl Viewer {
         Self {
             mode: InputMode::Normal,
             prompt: prompt::State::new(),
-            mux: MultiplexerApp::new(),
+            mux: mux::State::new(),
             status: status::State::new(),
             regex_cache: None,
             filter_config: config::State::new(),
@@ -1272,8 +1268,6 @@ impl Viewer {
     }
 
     fn ui(&mut self, f: &mut ratatui::Frame, handler: &mut MouseHandler) -> Option<(u16, u16)> {
-        let [mux_chunk, cmd_chunk] = MultiplexerWidget::split_bottom(f.area(), 1);
-
         match self.mode {
             InputMode::Prompt(PromptMode::Search { escaped, .. }) => {
                 let pattern = self.prompt.buf();
@@ -1309,20 +1303,83 @@ impl Viewer {
             }
         }
 
-        MultiplexerWidget {
-            mux: &mut self.mux,
-            status: &mut self.status,
-            mode: self.mode,
-            config: &mut self.filter_config,
-            gutter: self.gutter,
-            linked_filters: self.linked_filters,
-            help: &mut self.help,
-            regex: self
-                .regex_cache
-                .as_ref()
-                .and_then(|cache| cache.regex.as_ref()),
+        let [tab_chunk, mut mux_chunk, status_chunk, cmd_chunk] = mux::split_mux(f.area());
+
+        let active_index = self.mux.active_index();
+        mux::Widget::hydrate(&mut self.mux)
+            .override_mode(Some(mux::Mode::Panes))
+            .render(
+                tab_chunk,
+                f.buffer_mut(),
+                |pane_chunk, buf, view_index, instance| {
+                    mux::TabWidget {
+                        view_index,
+                        name: instance.name(),
+                        active: active_index == view_index,
+                    }
+                    .render(pane_chunk, buf, handler);
+                },
+            );
+
+        match self.mode {
+            InputMode::Filter => {
+                mux::filter_area(&mut mux_chunk, |area| {
+                    mux::Widget::hydrate(&mut self.mux)
+                        .override_mode(self.linked_filters.then_some(mux::Mode::Tabs))
+                        .render(
+                            area,
+                            f.buffer_mut(),
+                            |pane_chunk, buf, view_index, instance| {
+                                filters::Widget {
+                                    view_index,
+                                    compositor: instance.compositor_mut(),
+                                }
+                                .render(pane_chunk, buf, handler);
+                            },
+                        );
+                });
+            }
+            InputMode::Config => {
+                mux::filter_area(&mut mux_chunk, |area| {
+                    config::Widget::hydrate(&mut self.filter_config).render(
+                        area,
+                        f.buffer_mut(),
+                        handler,
+                    );
+                });
+            }
+            InputMode::Help => {
+                mux::filter_area(&mut mux_chunk, |area| {
+                    self.help.set_height(usize::from(area.height));
+                    self.help.render(area, f.buffer_mut());
+                });
+            }
+            _ => {}
         }
-        .render(mux_chunk, f.buffer_mut(), handler);
+
+        mux::Widget::hydrate(&mut self.mux).render(
+            mux_chunk,
+            f.buffer_mut(),
+            |pane_chunk, buf, view_index, instance| {
+                viewer::Widget {
+                    view_index,
+                    instance,
+                    show_selection: self.mode == InputMode::Visual,
+                    gutter: self.gutter,
+                    regex: self
+                        .regex_cache
+                        .as_ref()
+                        .and_then(|cache| cache.regex.as_ref()),
+                }
+                .render(pane_chunk, buf, handler);
+            },
+        );
+
+        use ratatui::widgets::Widget as _;
+        status::Widget::new(self.mode)
+            .with_instance(self.mux.active_mut().map(|v| &*v))
+            .with_message(self.status.get_message_update().as_deref())
+            .render(status_chunk, f.buffer_mut());
 
         let mut cursor = None;
         prompt::Widget {

@@ -11,7 +11,11 @@ pub struct ConfigViewerWidget<'a> {
     pub(super) app: &'a mut super::State,
 }
 
-impl ConfigViewerWidget<'_> {
+impl<'a> ConfigViewerWidget<'a> {
+    pub fn hydrate(state: &'a mut super::State) -> Self {
+        Self { app: state }
+    }
+
     fn split_left(area: Rect, left_width: u16) -> [Rect; 2] {
         let mut left_chunk = area;
         left_chunk.width = left_width;
