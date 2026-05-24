@@ -221,11 +221,11 @@ impl App {
 
         self.event_loop()?;
 
-        if self.app.viewer.filter_config.is_persistent() {
+        if self.app.viewer.config.is_persistent() {
             if let Some(source) = self.app.viewer.mux.active_mut() {
                 let export = source.compositor_mut().filters().export(None);
 
-                if let Err(err) = self.app.viewer.filter_config.set_persistent_filter(export) {
+                if let Err(err) = self.app.viewer.config.set_persistent_filter(export) {
                     self.app.viewer.status.msg(format!("filter save: {err}"));
                 }
 
@@ -457,10 +457,10 @@ impl App {
                 } => self
                     .app
                     .viewer
-                    .filter_config
+                    .config
                     .move_select(direction, select, delta),
                 ConfigAction::LoadSelectedFilter => {
-                    let Some(export) = self.app.viewer.filter_config.selected_filter() else {
+                    let Some(export) = self.app.viewer.config.selected_filter() else {
                         return Ok(true);
                     };
 
@@ -472,11 +472,11 @@ impl App {
                         });
                 }
                 ConfigAction::RemoveSelectedFilter => {
-                    let selected_filters = self.app.viewer.filter_config.selected_filter_indices();
+                    let selected_filters = self.app.viewer.config.selected_filter_indices();
                     if let Err(err) = self
                         .app
                         .viewer
-                        .filter_config
+                        .config
                         .remove_filters(selected_filters)
                     {
                         self.app
@@ -951,12 +951,12 @@ impl App {
     }
 
     fn command_filter_persist(&mut self, _: &[&str]) {
-        let new_persistence = !self.app.viewer.filter_config.is_persistent();
+        let new_persistence = !self.app.viewer.config.is_persistent();
 
         if let Err(err) = self
             .app
             .viewer
-            .filter_config
+            .config
             .set_persistent(new_persistence)
         {
             self.app.viewer.status.msg(format!("filter persist: {err}"));
@@ -1015,7 +1015,7 @@ impl App {
         let name: String = args.into_iter().copied().collect::<Vec<&str>>().join(" ");
         let export = source.compositor_mut().filters().export(Some(name));
 
-        if let Err(err) = self.app.viewer.filter_config.add_filter(export) {
+        if let Err(err) = self.app.viewer.config.add_filter(export) {
             self.app.viewer.status.msg(format!("filter save: {err}"));
         }
 
@@ -1162,9 +1162,9 @@ pub struct Viewer {
     mux: mux::State,
     status: status::State,
     prompt: prompt::State,
-    regex_cache: Option<RegexCache>,
-    filter_config: config::State,
+    config: config::State,
     help: help::State,
+    regex_cache: Option<RegexCache>,
     gutter: bool,
     linked_filters: bool,
 }
@@ -1173,14 +1173,14 @@ impl Viewer {
     pub fn new() -> Self {
         Self {
             mode: InputMode::Normal,
-            prompt: prompt::State::new(),
             mux: mux::State::new(),
             status: status::State::new(),
+            prompt: prompt::State::new(),
+            config: config::State::new(),
+            help: help::State::new(),
             regex_cache: None,
-            filter_config: config::State::new(),
             gutter: true,
             linked_filters: false,
-            help: help::State::new(),
         }
     }
 
@@ -1189,7 +1189,7 @@ impl Viewer {
     }
 
     pub fn open_file(&mut self, path: &Path) -> Result<()> {
-        let load_filters = self.mux.is_empty() && self.filter_config.is_persistent();
+        let load_filters = self.mux.is_empty() && self.config.is_persistent();
 
         let file = std::fs::File::open(path)?;
 
@@ -1210,7 +1210,7 @@ impl Viewer {
         );
 
         if load_filters {
-            let filter_set = match self.filter_config.get_persistent_filter() {
+            let filter_set = match self.config.get_persistent_filter() {
                 Ok(filters) => filters,
                 Err(err) => {
                     self.status.msg(format!("filter persist/load: {err}"));
@@ -1337,7 +1337,7 @@ impl Viewer {
                         });
                 }
                 InputMode::Config => {
-                    config::Widget::hydrate(&mut self.filter_config).render(area, buf, handler);
+                    config::Widget::hydrate(&mut self.config).render(area, buf, handler);
                 }
                 InputMode::Help => {
                     self.help.set_height(usize::from(area.height));

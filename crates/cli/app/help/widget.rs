@@ -88,10 +88,8 @@ impl<'a> HelpWidget<'a> {
             &mut max_command_width,
         );
 
-        let command_column =
-            Paragraph::new(command_lines).wrap(ratatui::widgets::Wrap { trim: false });
-        let description_column =
-            Paragraph::new(description_lines).wrap(ratatui::widgets::Wrap { trim: false });
+        let command_column = Paragraph::new(command_lines);
+        let description_column = Paragraph::new(description_lines);
 
         let [command_area, description_area] = Self::split_left(area, max_command_width as u16 + 4);
         command_column

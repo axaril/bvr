@@ -151,9 +151,7 @@ impl Instance {
                 return;
             }
         };
-        for _ in 0..delta {
-            self.view.pan_vertically(&self.buf, dir);
-        }
+        self.view.pan_vertically(&self.buf, dir, delta);
         self.view.set_follow_output(false);
     }
 
@@ -164,9 +162,7 @@ impl Instance {
             ViewDelta::HalfPage => self.viewport().width().div_ceil(2),
             _ => 0,
         };
-        for _ in 0..delta {
-            self.view.pan_horizontal(dir);
-        }
+        self.view.pan_horizontal(dir, delta);
         self.set_follow_output(false);
     }
 

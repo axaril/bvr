@@ -28,8 +28,6 @@ impl HelpState {
             ViewDelta::Boundary => 0,
             ViewDelta::Match => unimplemented!("there is no result jumping for help"),
         };
-        for _ in 0..delta {
-            self.viewport.pan_vertical(dir);
-        }
+        self.viewport.pan_vertical(dir, delta);
     }
 }
