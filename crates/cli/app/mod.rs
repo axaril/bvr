@@ -22,7 +22,7 @@ use self::{
 use crate::{
     app::{
         actions::HelpAction,
-        command::Command,
+        command::{Command, CommandSystem},
         terminal::{Terminal, TerminalState},
         viewer::Instance,
     },
@@ -69,7 +69,7 @@ pub struct App {
     term: terminal::TerminalState,
     refresh: bool,
     action_queue: VecDeque<Action>,
-    commands: &'static [Command],
+    commands: CommandSystem,
 }
 
 impl App {
@@ -172,7 +172,7 @@ impl App {
             term: TerminalState::new(term),
             action_queue: VecDeque::new(),
             refresh: false,
-            commands: Self::DEFAULT_COMMANDS,
+            commands: CommandSystem::new(Self::DEFAULT_COMMANDS),
         }
     }
 
@@ -526,9 +526,22 @@ impl App {
                         return Ok(true);
                     }
 
+                    /// Build the new buffer content after accepting `completion` for the last token.
+                    fn build_completion(buf: &str, completion: &str) -> String {
+                        if buf.ends_with(char::is_whitespace) {
+                            format!("{buf}{completion} ")
+                        } else {
+                            let prefix = match buf.rfind(char::is_whitespace) {
+                                Some(pos) => &buf[..=pos],
+                                None => "",
+                            };
+                            format!("{prefix}{completion} ")
+                        }
+                    }
+
                     if !self.app.viewer.prompt.advance_completion() {
                         // Fresh completion — compute candidates from the current buffer.
-                        let candidates = self.complete_command(&buf);
+                        let candidates = self.commands.complete_command(&buf);
                         match candidates.as_slice() {
                             &[] => {}
                             &[candidate] => {
@@ -687,70 +700,6 @@ impl App {
         true
     }
 
-    pub fn process_command_system(&mut self, command: &str) {
-        let parts: Vec<&str> = command.split_whitespace().collect();
-
-        fn find_cmd<'a>(cmds: &'a [Command], token: Option<&str>) -> Option<&'a Command> {
-            cmds.iter().find(|cmd| {
-                Some(cmd.name) == token
-                    || token
-                        .map(|token| cmd.aliases.contains(&token))
-                        .unwrap_or(false)
-            })
-        }
-
-        if parts.is_empty() {
-            return;
-        }
-
-        let mut cmd: Option<&Command> = None;
-        let mut parts = parts.as_slice();
-        loop {
-            let (part, rem): (Option<&str>, &[&str]) = parts
-                .split_first()
-                .map_or((None, &[]), |(&first, rest)| (Some(first), rest));
-
-            if let Some(current_cmd) = cmd {
-                let subcommand_string = current_cmd
-                    .subcommands
-                    .iter()
-                    .map(|cmd| cmd.name)
-                    .collect::<Vec<_>>()
-                    .join(", ");
-
-                let subcmd = find_cmd(&current_cmd.subcommands, part);
-
-                if subcmd.is_none() {
-                    if let Some(action) = current_cmd.action {
-                        action(self, parts);
-                    } else {
-                        self.app.viewer.status.msg(format!(
-                            "Command '{}' requires subcommand: {}",
-                            current_cmd.name, subcommand_string
-                        ));
-                    }
-                    return;
-                }
-
-                cmd = subcmd;
-                parts = rem;
-            } else {
-                let basecmd = find_cmd(&mut self.commands, part);
-
-                if basecmd.is_none() {
-                    self.app
-                        .viewer
-                        .status
-                        .msg(format!("Unknown command '{}'", part.unwrap_or("UNKNOWN")));
-                    return;
-                }
-
-                cmd = basecmd;
-                parts = rem;
-            }
-        }
-    }
-
     fn process_command(&mut self, command: &str) -> bool {
         if let Ok(line_number) = command.parse::<usize>() {
             if let Some(instance) = self.app.viewer.mux.active_mut() {
@@ -759,7 +708,14 @@ impl App {
                 }
             }
         } else {
-            self.process_command_system(command)
+            match self.commands.resolve(command) {
+                Ok((command, args)) => {
+                    command(self, args.as_slice());
+                }
+                Err(err) => {
+                    self.app.viewer.status.msg(format!("{err}"));
+                }
+            }
         }
 
         true
@@ -1024,73 +980,6 @@ impl App {
                 .msg(String::from("No active instances"));
         }
     }
-
-    fn complete_command(&self, buf: &str) -> Vec<&'static str> {
-        fn all_names(cmds: &[Command]) -> Vec<&'static str> {
-            cmds.iter().map(|cmd| cmd.name).collect()
-        }
-
-        fn find_cmd<'a>(cmds: &'a [Command], token: &str) -> Option<&'a Command> {
-            cmds.iter()
-                .find(|cmd| cmd.name == token || cmd.aliases.contains(&token))
-        }
-
-        if buf.is_empty() {
-            return all_names(&self.commands);
-        }
-
-        let ends_with_space = buf.ends_with(char::is_whitespace);
-        let mut tokens: Vec<&str> = buf.split_whitespace().collect();
-
-        if ends_with_space {
-            // Every token is complete; navigate the hierarchy and offer the next level.
-            let mut current: &[Command] = &self.commands;
-            for token in &tokens {
-                match find_cmd(current, token) {
-                    Some(cmd) if !cmd.subcommands.is_empty() => {
-                        current = &cmd.subcommands;
-                    }
-                    _ => return vec![],
-                }
-            }
-
-            all_names(current)
-        } else {
-            // Last token is a partial word; complete it against the current level.
-            let partial = match tokens.pop() {
-                Some(p) => p,
-                None => return vec![],
-            };
-
-            let mut current: &[Command] = &self.commands;
-            for token in &tokens {
-                match find_cmd(current, token) {
-                    Some(cmd) if !cmd.subcommands.is_empty() => {
-                        current = &cmd.subcommands;
-                    }
-                    _ => return vec![],
-                }
-            }
-
-            all_names(current)
-                .into_iter()
-                .filter(|c| c.starts_with(partial))
-                .collect()
-        }
-    }
-}
-
-/// Build the new buffer content after accepting `completion` for the last token.
-fn build_completion(buf: &str, completion: &str) -> String {
-    if buf.ends_with(char::is_whitespace) {
-        format!("{buf}{completion} ")
-    } else {
-        let prefix = match buf.rfind(char::is_whitespace) {
-            Some(pos) => &buf[..=pos],
-            None => "",
-        };
-        format!("{prefix}{completion} ")
-    }
 }
 
 struct RegexCache {
@@ -1212,7 +1101,7 @@ impl Viewer {
     fn ui(
         &mut self,
         f: &mut ratatui::Frame,
-        commands: &[Command],
+        commands: &CommandSystem,
         handler: &mut MouseHandler,
     ) -> Option<(u16, u16)> {
         match self.mode {
@@ -1284,7 +1173,7 @@ impl Viewer {
                 InputMode::Help => {
                     self.help.set_height(usize::from(area.height));
                     help::Widget::hydrate(&mut self.help)
-                        .commands(commands)
+                        .commands(commands.commands())
                         .render(area, buf);
                 }
                 _ => {}
