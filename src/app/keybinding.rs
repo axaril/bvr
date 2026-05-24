@@ -861,7 +861,7 @@ mod tests {
 
     #[test]
     fn test_parse_default_keybindings_file() {
-        let toml = include_str!("../../../default_keybindings.toml");
+        let toml = include_str!("../../default_keybindings.toml");
         let config = KeybindingConfig::from_toml_str(toml);
         assert!(
             config.is_ok(),
