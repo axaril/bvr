@@ -3,7 +3,7 @@ name = "bvr"
 description = "A pager designed to help you chew through logs."
 categories = ["command-line-utilities"]
 authors = ["An Tran <antranprm@gmail.com>"]
-version = "0.0.5"
+version = "0.0.6"
 edition = "2024"
 license = "MIT"
 keywords = ["cli", "pager"]
@@ -61,7 +61,6 @@ toml = "1.1.2"
 [profile.release]
 strip = true
 lto = true
-panic = "abort"
 codegen-units = 1
 
 [profile.flamegraph]
