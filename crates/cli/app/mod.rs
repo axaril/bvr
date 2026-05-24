@@ -69,151 +69,111 @@ pub struct App {
     term: terminal::TerminalState,
     refresh: bool,
     action_queue: VecDeque<Action>,
-    commands: Vec<Command>,
+    commands: &'static [Command],
 }
 
 impl App {
+    const DEFAULT_COMMANDS: &'static [Command] = &[
+        Command::new("help")
+            .aliases(&["h", "?"])
+            .description("Display all commands.")
+            .bind(Self::command_help),
+        Command::new("quit")
+            .aliases(&["q"])
+            .description("Quit the application.")
+            .bind(Self::command_quit),
+        Command::new("mcap")
+            .description("Toggle mouse capture.")
+            .bind(Self::command_mcap),
+        Command::new("realpath")
+            .aliases(&["rp", "readlink", "rl"])
+            .description("Copy the path of the current file to the clipboard if applicable.")
+            .bind(Self::command_realpath),
+        Command::new("pbcopy")
+            .aliases(&["pb"])
+            .description("Copy the content of the current view to the clipboard.")
+            .bind(Self::command_pbcopy),
+        Command::new("refresh")
+            .description("Refresh the screen.")
+            .bind(Self::command_refresh),
+        Command::new("open")
+            .aliases(&["o"])
+            .args("<path>")
+            .description("Open a file in a new tab/view.")
+            .bind(Self::command_open),
+        Command::new("export")
+            .args("<path>")
+            .description("Export the content of the current view to a file.")
+            .bind(Self::command_export),
+        Command::new("close")
+            .aliases(&["c"])
+            .description("Close the current tab/view.")
+            .bind(Self::command_close),
+        Command::new("gutter")
+            .aliases(&["g"])
+            .description("Toggle the gutter line numbers.")
+            .bind(Self::command_gutter),
+        Command::new("mux")
+            .aliases(&["m"])
+            .description("Toggle the multiplexer mode between windows or tabs.")
+            .subcommands(&[
+                Command::new("tabs")
+                    .aliases(&["t", "none"])
+                    .description("Set the multiplexer to tabs mode.")
+                    .bind(Self::command_mux_tabs),
+                Command::new("split")
+                    .aliases(&["s", "win"])
+                    .description("Set the multiplexer to split window mode.")
+                    .bind(Self::command_mux_panes),
+            ])
+            .bind(Self::command_mux),
+        Command::new("filter")
+            .aliases(&["f", "find"])
+            .description("Commands for managing filters.")
+            .subcommands(&[
+                Command::new("link")
+                    .description("Toggle whether filters are linked across all views.")
+                    .bind(Self::command_filter_linked),
+                Command::new("persist")
+                    .aliases(&["p"])
+                    .description("Toggle whether filters are persisted on shutdown and launch.")
+                    .bind(Self::command_filter_persist),
+                Command::new("copy")
+                    .aliases(&["c"])
+                    .args("<view index>")
+                    .description("Copy the filter set of the current view to a target view.")
+                    .bind(Self::command_filter_copy),
+                Command::new("save")
+                    .aliases(&["s"])
+                    .args("[name]")
+                    .description("Save the currently selected filter set to the config.")
+                    .bind(Self::command_filter_save),
+                Command::new("load")
+                    .description("Load a filter set from the config into the current view.")
+                    .bind(Self::command_filter_load),
+                Command::new("clear")
+                    .aliases(&["c"])
+                    .description("Clear all filters from the current view.")
+                    .bind(Self::command_filter_clear),
+                Command::new("union")
+                    .aliases(&["u"])
+                    .description("Union the selected filter sets into the current view.")
+                    .bind(Self::command_filter_union),
+                Command::new("intersect")
+                    .aliases(&["i"])
+                    .description("Intersect the selected filter sets into the current view.")
+                    .bind(Self::command_filter_intersect),
+            ]),
+    ];
+
     pub fn new(state: State, term: Terminal) -> Self {
-        let mut app = Self {
+        Self {
             app: state,
             term: TerminalState::new(term),
             action_queue: VecDeque::new(),
             refresh: false,
-            commands: Vec::new(),
-        };
-
-        app.add_command(
-            Command::new("help")
-                .aliases(&["h", "?"])
-                .description("Display all commands.")
-                .bind(Self::command_help),
-        );
-        app.add_command(
-            Command::new("quit")
-                .aliases(&["q"])
-                .description("Quit the application.")
-                .bind(Self::command_quit),
-        );
-        app.add_command(
-            Command::new("mcap")
-                .description("Toggle mouse capture.")
-                .bind(Self::command_mcap),
-        );
-        app.add_command(
-            Command::new("realpath")
-                .aliases(&["rp", "readlink", "rl"])
-                .description("Copy the path of the current file to the clipboard if applicable.")
-                .bind(Self::command_realpath),
-        );
-        app.add_command(
-            Command::new("pbcopy")
-                .aliases(&["pb"])
-                .description("Copy the content of the current view to the clipboard.")
-                .bind(Self::command_pbcopy),
-        );
-        app.add_command(
-            Command::new("refresh")
-                .description("Refresh the screen.")
-                .bind(Self::command_refresh),
-        );
-        app.add_command(
-            Command::new("open")
-                .aliases(&["o"])
-                .args("<path>")
-                .description("Open a file in a new tab/view.")
-                .bind(Self::command_open),
-        );
-        app.add_command(
-            Command::new("export")
-                .args("<path>")
-                .description("Export the content of the current view to a file.")
-                .bind(Self::command_export),
-        );
-        app.add_command(
-            Command::new("close")
-                .aliases(&["c"])
-                .description("Close the current tab/view.")
-                .bind(Self::command_close),
-        );
-        app.add_command(
-            Command::new("gutter")
-                .aliases(&["g"])
-                .description("Toggle the gutter line numbers.")
-                .bind(Self::command_gutter),
-        );
-        app.add_command(
-            Command::new("mux")
-                .aliases(&["m"])
-                .description("Toggle the multiplexer mode between windows or tabs.")
-                .subcommand(
-                    Command::new("tabs")
-                        .aliases(&["t", "none"])
-                        .description("Set the multiplexer to tabs mode.")
-                        .bind(Self::command_mux_tabs),
-                )
-                .subcommand(
-                    Command::new("split")
-                        .aliases(&["s", "win"])
-                        .description("Set the multiplexer to split window mode.")
-                        .bind(Self::command_mux_panes),
-                )
-                .bind(Self::command_mux),
-        );
-        app.add_command(
-            Command::new("filter")
-                .aliases(&["f", "find"])
-                .description("Commands for managing filters.")
-                .subcommand(
-                    Command::new("link")
-                        .description("Toggle whether filters are linked across all views.")
-                        .bind(Self::command_filter_linked),
-                )
-                .subcommand(
-                    Command::new("persist")
-                        .aliases(&["p"])
-                        .description("Toggle whether filters are persisted on shutdown and launch.")
-                        .bind(Self::command_filter_persist),
-                )
-                .subcommand(
-                    Command::new("copy")
-                        .aliases(&["c"])
-                        .args("<view index>")
-                        .description("Copy the filter set of the current view to a target view.")
-                        .bind(Self::command_filter_copy),
-                )
-                .subcommand(
-                    Command::new("save")
-                        .aliases(&["s"])
-                        .args("[name]")
-                        .description("Save the currently selected filter set to the config.")
-                        .bind(Self::command_filter_save),
-                )
-                .subcommand(
-                    Command::new("load")
-                        .description("Load a filter set from the config into the current view.")
-                        .bind(Self::command_filter_load),
-                )
-                .subcommand(
-                    Command::new("clear")
-                        .aliases(&["c"])
-                        .description("Clear all filters from the current view.")
-                        .bind(Self::command_filter_clear),
-                )
-                .subcommand(
-                    Command::new("union")
-                        .aliases(&["u"])
-                        .description("Union the selected filter sets into the current view.")
-                        .bind(Self::command_filter_union),
-                )
-                .subcommand(
-                    Command::new("intersect")
-                        .aliases(&["i"])
-                        .description("Intersect the selected filter sets into the current view.")
-                        .bind(Self::command_filter_intersect),
-                ),
-        );
-
-        app
+            commands: Self::DEFAULT_COMMANDS,
+        }
     }
 
     pub fn run(&mut self) -> Result<()> {
@@ -454,11 +414,7 @@ impl App {
                     direction,
                     select,
                     delta,
-                } => self
-                    .app
-                    .viewer
-                    .config
-                    .move_select(direction, select, delta),
+                } => self.app.viewer.config.move_select(direction, select, delta),
                 ConfigAction::LoadSelectedFilter => {
                     let Some(export) = self.app.viewer.config.selected_filter() else {
                         return Ok(true);
@@ -473,12 +429,7 @@ impl App {
                 }
                 ConfigAction::RemoveSelectedFilter => {
                     let selected_filters = self.app.viewer.config.selected_filter_indices();
-                    if let Err(err) = self
-                        .app
-                        .viewer
-                        .config
-                        .remove_filters(selected_filters)
-                    {
+                    if let Err(err) = self.app.viewer.config.remove_filters(selected_filters) {
                         self.app
                             .viewer
                             .status
@@ -736,15 +687,11 @@ impl App {
         true
     }
 
-    pub fn add_command(&mut self, command: Command) {
-        self.commands.push(command);
-    }
-
     pub fn process_command_system(&mut self, command: &str) {
         let parts: Vec<&str> = command.split_whitespace().collect();
 
-        fn find_cmd<'a>(cmds: &'a mut [Command], token: Option<&str>) -> Option<&'a mut Command> {
-            cmds.iter_mut().find(|cmd| {
+        fn find_cmd<'a>(cmds: &'a [Command], token: Option<&str>) -> Option<&'a Command> {
+            cmds.iter().find(|cmd| {
                 Some(cmd.name) == token
                     || token
                         .map(|token| cmd.aliases.contains(&token))
@@ -756,7 +703,7 @@ impl App {
             return;
         }
 
-        let mut cmd: Option<&mut Command> = None;
+        let mut cmd: Option<&Command> = None;
         let mut parts = parts.as_slice();
         loop {
             let (part, rem): (Option<&str>, &[&str]) = parts
@@ -771,10 +718,10 @@ impl App {
                     .collect::<Vec<_>>()
                     .join(", ");
 
-                let subcmd = find_cmd(&mut current_cmd.subcommands, part);
+                let subcmd = find_cmd(&current_cmd.subcommands, part);
 
                 if subcmd.is_none() {
-                    if let Some(action) = current_cmd.action.as_mut() {
+                    if let Some(action) = current_cmd.action {
                         action(self, parts);
                     } else {
                         self.app.viewer.status.msg(format!(
@@ -953,12 +900,7 @@ impl App {
     fn command_filter_persist(&mut self, _: &[&str]) {
         let new_persistence = !self.app.viewer.config.is_persistent();
 
-        if let Err(err) = self
-            .app
-            .viewer
-            .config
-            .set_persistent(new_persistence)
-        {
+        if let Err(err) = self.app.viewer.config.set_persistent(new_persistence) {
             self.app.viewer.status.msg(format!("filter persist: {err}"));
             return;
         }

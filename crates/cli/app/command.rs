@@ -7,7 +7,7 @@ pub struct Command {
     pub(super) aliases: &'static [&'static str],
     pub(super) description: &'static str,
     pub(super) arguments: &'static str,
-    pub(super) subcommands: Vec<Command>,
+    pub(super) subcommands: &'static [Command],
     pub(super) action: Option<CommandAction>,
 }
 
@@ -18,7 +18,7 @@ impl Command {
             aliases: &[],
             description: "",
             arguments: "",
-            subcommands: Vec::new(),
+            subcommands: &[],
             action: None,
         }
     }
@@ -33,8 +33,8 @@ impl Command {
         self
     }
 
-    pub fn subcommand(mut self, subcommand: Command) -> Self {
-        self.subcommands.push(subcommand);
+    pub const fn subcommands(mut self, subcommands: &'static [Command]) -> Self {
+        self.subcommands = subcommands;
         self
     }
 
