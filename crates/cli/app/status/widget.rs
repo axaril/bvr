@@ -46,13 +46,13 @@ impl<'a> Widget for StatusWidget<'a> {
             InputMode::Prompt(PromptMode::Search { escaped, edit }) => (
                 colors::FILTER_ACCENT,
                 match (escaped, edit) {
-                    (true, true) => " EDIT FILTER (ESCAPED) ",
+                    (true, true) => " FILTER EDIT REGEX (ESCAPED) ",
                     (true, false) => " FILTER (ESCAPED) ",
-                    (false, true) => " EDIT FILTER ",
+                    (false, true) => " FILTER EDIT REGEX ",
                     (false, false) => " FILTER ",
                 },
             ),
-            InputMode::Prompt(PromptMode::FilterColor) => (colors::FILTER_ACCENT, " FILTER COLOR "),
+            InputMode::Prompt(PromptMode::FilterColor) => (colors::FILTER_ACCENT, " FILTER EDIT COLOR "),
             InputMode::Normal => (colors::NORMAL_ACCENT, " NORMAL "),
             InputMode::Visual => (colors::SELECT_ACCENT, " VISUAL "),
             InputMode::Filter => (colors::FILTER_ACCENT, " FILTER "),

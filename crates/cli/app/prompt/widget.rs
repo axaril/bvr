@@ -3,7 +3,7 @@ use std::sync::OnceLock;
 use ratatui::{prelude::*, widgets::*};
 
 use crate::{
-    app::{command::CommandSystem, control::{InputMode, PromptMode}},
+    app::{command::CommandSystem, control::{InputMode, PromptMode}, highlight},
     colors,
     cursor::{Cursor, SelectionOrigin},
 };
@@ -54,11 +54,11 @@ impl<'a> Widget for PromptWidget<'a> {
         // Syntax-highlight the input when editing a regex (not escaped/literal mode).
         let prompt_line = match mode {
             PromptMode::Search { escaped: false, .. } => {
-                super::highlight::regex::RegexHighlighter::new(cmd_buf).highlight()
+                Line::from(highlight::RegexHighlighter::new(cmd_buf).highlight())
             }
             PromptMode::Command => {
-                super::highlight::command::CommandHighlighter::new(cmd_buf)
-                    .highlight(self.commands)
+                Line::from(highlight::CommandHighlighter::new(cmd_buf)
+                    .highlight(self.commands))
             }
             _ => Line::raw(cmd_buf),
         };

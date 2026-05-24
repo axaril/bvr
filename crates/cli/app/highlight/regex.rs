@@ -26,7 +26,7 @@ impl<'a> RegexHighlighter<'a> {
         }
     }
 
-    pub fn highlight(mut self) -> Line<'a> {
+    pub fn highlight(mut self) -> Vec<Span<'a>> {
         while let Some(ch) = self.base.current() {
             let old_i = self.base.i;
 
@@ -179,7 +179,7 @@ impl<'a> RegexHighlighter<'a> {
 
     /// Apply retroactive ERROR coloring to any still-open delimiters, then
     /// assemble and return the final [`Line`].
-    fn finalize(mut self) -> Line<'a> {
+    fn finalize(mut self) -> Vec<Span<'a>> {
         // Every `(` still on the stack was never closed.
         for idx in self.group_stack {
             self.base.spans[idx].style = Style::new().bg(colors::ERROR);

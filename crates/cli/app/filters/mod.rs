@@ -21,23 +21,41 @@ enum FilterSet {
 pub enum Mask {
     All,
     Bookmarks,
-    Regex(Regex),
+    Regex {
+        name: String,
+        escaped: bool,
+        regex: Regex,
+    },
 }
 
 impl Mask {
-    pub fn build(pattern: &str, literal: bool) -> Result<(Self, Regex), regex::Error> {
-        let regex = if literal {
+    pub fn build(pattern: &str, escaped: bool) -> Result<(Self, Regex), regex::Error> {
+        let regex = if escaped {
             regex_compile(&regex::escape(pattern))
         } else {
             regex_compile(pattern)
         }?;
-        Ok((Self::Regex(regex.clone()), regex))
+        Ok((
+            Self::Regex {
+                name: pattern.to_owned(),
+                escaped,
+                regex: regex.clone(),
+            },
+            regex,
+        ))
     }
 
-    pub fn regex(&self) -> Option<Regex> {
+    pub fn regex(&self) -> Option<&Regex> {
         match self {
             Self::All | Self::Bookmarks => None,
-            Self::Regex(regex) => Some(regex.clone()),
+            Self::Regex { regex, .. } => Some(regex),
+        }
+    }
+
+    pub fn escaped(&self) -> bool {
+        match self {
+            Self::Regex { escaped: true, .. } => true,
+            _ => false,
         }
     }
 
@@ -45,7 +63,7 @@ impl Mask {
         match self {
             Mask::All => "All Lines",
             Mask::Bookmarks => "Bookmarks",
-            Mask::Regex(regex) => regex.as_str(),
+            Mask::Regex { name, .. } => name.as_str(),
         }
     }
 }
@@ -73,6 +91,8 @@ pub enum MaskExport {
     Bookmarks,
     #[serde(rename = "regex")]
     Regex {
+        name: String,
+        escaped: bool,
         regex: String,
     },
 }
@@ -92,7 +112,7 @@ impl FilterExport {
         match &self.mask {
             MaskExport::All => "All",
             MaskExport::Bookmarks => "Bookmarks",
-            MaskExport::Regex { regex } => regex.as_str(),
+            MaskExport::Regex { name, .. } => name.as_str(),
         }
     }
 
@@ -142,7 +162,13 @@ impl Filter {
             mask: match &self.mask {
                 Mask::All => MaskExport::All,
                 Mask::Bookmarks => MaskExport::Bookmarks,
-                Mask::Regex(regex) => MaskExport::Regex {
+                Mask::Regex {
+                    name,
+                    escaped,
+                    regex,
+                } => MaskExport::Regex {
+                    name: name.clone(),
+                    escaped: *escaped,
                     regex: regex.to_string(),
                 },
             },
@@ -152,16 +178,24 @@ impl Filter {
     }
 
     pub fn from_export(file: &SegBuffer, export: &FilterExport) -> Self {
-        let mask = match export.mask {
+        let mask = match &export.mask {
             MaskExport::All | MaskExport::Bookmarks => {
                 unreachable!("should have been processed before")
             }
-            MaskExport::Regex { ref regex } => Mask::Regex(regex_compile(regex).unwrap()),
+            MaskExport::Regex {
+                name,
+                escaped,
+                regex,
+            } => Mask::Regex {
+                name: name.clone(),
+                escaped: *escaped,
+                regex: regex_compile(regex).unwrap(),
+            },
         };
         Self {
             data: FilterSet::Search(LineSet::search(
                 file.segment_iter().unwrap(),
-                mask.regex().unwrap(),
+                mask.regex().cloned().unwrap(),
             )),
             mask,
             enabled: export.enabled,

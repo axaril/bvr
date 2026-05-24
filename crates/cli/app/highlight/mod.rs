@@ -1,7 +1,10 @@
-use ratatui::{prelude::{Color, Span}, text::Line};
+use ratatui::prelude::{Color, Span};
 
-pub mod regex;
-pub mod command;
+mod regex;
+mod command;
+
+pub use regex::RegexHighlighter;
+pub use command::CommandHighlighter;
 
 struct Highlighter<'a> {
     input: &'a str,
@@ -64,7 +67,7 @@ impl<'a> Highlighter<'a> {
         }
     }
 
-    fn extract(self) -> Line<'a> {
-        Line::from(self.spans)
+    fn extract(self) -> Vec<Span<'a>> {
+        self.spans
     }
 }

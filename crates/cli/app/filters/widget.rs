@@ -2,7 +2,7 @@ use super::super::{
     actions::{Action, FilterAction},
     mouse::MouseHandler,
 };
-use crate::{app::filters::Filter, colors, cursor::Cursor};
+use crate::{app::{filters::Filter, highlight}, colors, cursor::Cursor};
 use bitflags::bitflags;
 use crossterm::event::MouseEventKind;
 use ratatui::{prelude::*, widgets::*};
@@ -110,7 +110,15 @@ impl FilterLineWidget<'_> {
             .fg(color),
         ];
 
-        v.push(Span::raw(self.filter.mask().name()).fg(color));
+        if self.filter.mask().regex().is_some() && !self.filter.mask().escaped() {
+            v.extend(highlight::RegexHighlighter::new(self.filter.mask().name()).highlight());
+        } else {
+            v.push(Span::raw(self.filter.mask().name()).fg(color));
+        }
+
+        if self.filter.mask().escaped() {
+            v.push(Span::raw(" (escaped)").fg(colors::TEXT_INACTIVE));
+        }
 
         if let Some(len) = self.filter.len() {
             v.push(Span::raw(format!(" {}", len)).fg(colors::TEXT_INACTIVE));

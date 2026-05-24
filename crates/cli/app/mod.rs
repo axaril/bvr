@@ -8,6 +8,7 @@ mod terminal;
 mod config;
 mod filters;
 mod help;
+mod highlight;
 mod mux;
 mod prompt;
 mod status;
@@ -269,14 +270,17 @@ impl App {
                 let old_mode = self.app.viewer.mode;
                 self.app.viewer.mode = new_mode;
 
-                match new_mode {
+                match &mut self.app.viewer.mode {
                     InputMode::Visual => {
                         if let Some(instance) = self.app.viewer.mux.active_mut() {
                             instance.move_selected_into_view();
                             instance.set_follow_output(false);
                         }
                     }
-                    InputMode::Prompt(PromptMode::Search { edit: true, .. }) => {
+                    InputMode::Prompt(PromptMode::Search {
+                        edit: true,
+                        escaped,
+                    }) => {
                         if let InputMode::Prompt(PromptMode::Search { edit: true, .. }) = old_mode {
                             return Ok(true);
                         }
@@ -286,11 +290,16 @@ impl App {
                             .mux
                             .active_mut()
                             .and_then(|instance| instance.compositor_mut().selected_filter())
-                            .and_then(|filter| filter.mask().regex())
+                            .map(|filter| filter.mask())
                         {
-                            Some(regex) => {
+                            Some(filters::Mask::Regex {
+                                name,
+                                escaped: mask_escaped,
+                                ..
+                            }) => {
+                                *escaped = *mask_escaped;
                                 self.app.viewer.prompt.take();
-                                self.app.viewer.prompt.enter_str(regex.as_str());
+                                self.app.viewer.prompt.enter_str(name.as_str());
                             }
                             _ => {
                                 self.app.viewer.mode = old_mode;
