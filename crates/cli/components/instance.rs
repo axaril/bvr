@@ -2,10 +2,17 @@ use std::path::{Path, PathBuf};
 
 use super::{
     cursor::{Cursor, CursorState, SelectionOrigin},
-    viewer::{CachedLine, ViewCache},
+    virtual_view::{CachedLine, VirtualView},
     viewport::Viewport,
 };
-use crate::{app::{control::ViewDelta, filters::{self, Filter, FilterExportSet}}, colors::ColorSelector, direction::Direction};
+use crate::{
+    app::{
+        control::ViewDelta,
+        filters::{self, Filter, FilterExportSet},
+    },
+    colors::ColorSelector,
+    direction::Direction,
+};
 use bvr_core::SegBuffer;
 use bvr_core::{Result, matches::CompositeStrategy};
 use ratatui::prelude::Color;
@@ -16,7 +23,7 @@ pub struct Instance {
     buf: SegBuffer,
     cursor: CursorState,
     compositor: filters::State,
-    view: ViewCache,
+    view: VirtualView,
 }
 
 impl Instance {
@@ -25,7 +32,7 @@ impl Instance {
         let composite = compositor.create_composite();
         Self {
             link,
-            view: ViewCache::new(composite),
+            view: VirtualView::new(composite),
             compositor: filters::State::new(&buf),
             name,
             buf,
@@ -39,10 +46,6 @@ impl Instance {
 
     pub fn viewport(&self) -> &Viewport {
         self.view.viewport()
-    }
-
-    pub fn viewport_mut(&mut self) -> &mut Viewport {
-        self.view.viewport_mut()
     }
 
     pub fn set_follow_output(&mut self, follow_output: bool) {
@@ -81,12 +84,16 @@ impl Instance {
     }
 
     pub fn update_viewport(&mut self, height: usize, width: usize) {
-        self.view.viewport_mut().fit(height, width);
+        self.view.fit(height, width);
         self.view.set_end_index(self.visible_line_count());
     }
 
     pub fn view(&mut self) -> impl Iterator<Item = &CachedLine> {
         self.view.cache_view(&self.buf, Some(&self.compositor))
+    }
+
+    pub fn jump_vertically_to(&mut self, index: usize) {
+        self.view.jump_vertically_to(&self.buf, index);
     }
 
     pub fn add_search_filter(&mut self, pattern: &str, literal: bool) -> Result<(), regex::Error> {
@@ -131,7 +138,7 @@ impl Instance {
                     Direction::Back => 0,
                     Direction::Next => self.view.viewport().bottom().saturating_sub(1),
                 };
-                self.view.viewport_mut().top_to(top);
+                self.jump_vertically_to(top);
                 self.view.set_follow_output(false);
                 return;
             }
@@ -141,14 +148,13 @@ impl Instance {
                     self.compositor
                         .compute_jump(current, dir, self.view.composite())
                 {
-                    self.view.viewport_mut().top_to(next)
+                    self.jump_vertically_to(next);
                 }
                 return;
             }
         };
         for _ in 0..delta {
-            self.view.viewport_mut().pan_vertical(dir);
-            let _ = self.view.cache_view(&self.buf, None);
+            self.view.pan_vertically(&self.buf, dir);
         }
         self.view.set_follow_output(false);
     }
@@ -161,8 +167,7 @@ impl Instance {
             _ => 0,
         };
         for _ in 0..delta {
-            self.view.viewport_mut().pan_horizontal(dir);
-            let _ = self.view.cache_view(&self.buf, None);
+            self.view.pan_horizontal(dir);
         }
         self.set_follow_output(false);
     }
@@ -195,7 +200,7 @@ impl Instance {
             | Cursor::Selection(i, _, SelectionOrigin::Left)
             | Cursor::Selection(_, i, SelectionOrigin::Right) => i,
         };
-        self.view.viewport_mut().jump_vertically_to(i);
+        self.jump_vertically_to(i);
     }
 
     pub fn toggle_bookmark_line_number(&mut self, line_number: usize) {
@@ -295,7 +300,7 @@ impl Instance {
         self.invalidate_cache();
     }
 
-    pub fn write_bytes(&mut self, mut file: &mut impl std::io::Write) -> Result<()> {
+    pub fn write_bytes(&self, mut file: &mut impl std::io::Write) -> Result<()> {
         self.buf.write_bytes(&mut file, self.view.composite())
     }
 

@@ -70,6 +70,11 @@ impl MultiplexerApp {
         self.active = self.active.min(self.instances.len().saturating_sub(1));
     }
 
+    pub fn active(&self) -> Option<&Instance> {
+        debug_assert!(self.is_empty() || self.active < self.instances.len());
+        self.instances.get(self.active)
+    }
+
     pub fn active_mut(&mut self) -> Option<&mut Instance> {
         debug_assert!(self.is_empty() || self.active < self.instances.len());
         self.instances.get_mut(self.active)
