@@ -94,19 +94,21 @@ impl Viewport {
         }
     }
 
-    pub fn pan_vertical(&mut self, direction: Direction) -> bool {
-        match direction {
-            Direction::Back => self.top.checked_sub(1),
-            Direction::Next => self.top.checked_add(1),
-        }
-        .inspect(|v| self.top = *v)
-        .is_some()
+    pub fn pan_vertical(&mut self, direction: Direction, delta: usize) -> usize {
+        let old_top = self.top;
+        self.top = match direction {
+            Direction::Back => self.top.saturating_sub(delta),
+            Direction::Next => self.top.saturating_add(delta),
+        };
+        self.top.abs_diff(old_top)
     }
 
-    pub fn pan_horizontal(&mut self, direction: Direction) {
+    pub fn pan_horizontal(&mut self, direction: Direction, delta: usize) -> usize {
+        let old_left = self.left;
         self.left = match direction {
-            Direction::Back => self.left.saturating_sub(1),
-            Direction::Next => self.left.saturating_add(1),
-        }
+            Direction::Back => self.left.saturating_sub(delta),
+            Direction::Next => self.left.saturating_add(delta),
+        };
+        self.left.abs_diff(old_left)
     }
 }

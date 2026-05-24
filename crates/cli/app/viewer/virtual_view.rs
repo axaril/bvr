@@ -100,19 +100,21 @@ impl VirtualView {
         self.fill_cache(buf);
     }
 
-    pub fn pan_vertically(&mut self, buf: &SegBuffer, direction: Direction) {
+    pub fn pan_vertically(&mut self, buf: &SegBuffer, direction: Direction, delta: usize) {
         match direction {
             Direction::Back => {
-                if self.viewport.pan_vertical(direction) {
-                    self.push_front(self.viewport.top(), buf);
-                    self.cache.truncate(self.viewport.height());
+                let delta = self.viewport.pan_vertical(direction, delta);
+                for i in (0..delta).rev() {
+                    self.push_front(self.viewport.top() + i, buf);
                 }
+                self.cache.truncate(self.viewport.height());
             }
             Direction::Next => {
-                if self.viewport.pan_vertical(direction) {
+                let delta = self.viewport.pan_vertical(direction, delta);
+                for _ in 0..delta {
                     self.cache.pop_front();
-                    self.fill_cache(buf);
                 }
+                self.fill_cache(buf);
             }
         }
     }
@@ -190,7 +192,7 @@ impl VirtualView {
         self.viewport.fit(height, width);
     }
 
-    pub fn pan_horizontal(&mut self, dir: Direction) {
-        self.viewport.pan_horizontal(dir);
+    pub fn pan_horizontal(&mut self, dir: Direction, delta: usize) {
+        self.viewport.pan_horizontal(dir, delta);
     }
 }
