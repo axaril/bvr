@@ -16,7 +16,7 @@ pub struct ViewWidget<'a> {
     pub instance: &'a mut Instance,
     pub show_selection: bool,
     pub gutter: bool,
-    pub regex: Option<&'a Regex>,
+    pub regex: Option<(Color, &'a Regex)>,
 }
 
 struct LineRenderData<'a> {
@@ -41,7 +41,6 @@ bitflags! {
 impl ViewWidget<'_> {
     pub fn render(self, area: Rect, buf: &mut Buffer, handle: &mut MouseHandler) {
         let left = self.instance.viewport().left();
-        let search_color = self.instance.color_selector().peek_color();
         let gutter_size = self
             .gutter
             .then(|| (self.instance.total_line_count().max(1).ilog10() as u16 + 1).max(4));
@@ -60,7 +59,6 @@ impl ViewWidget<'_> {
                 ViewerLineWidget {
                     view_index: self.view_index,
                     start: left,
-                    search_color,
                     line_data: line.map(|line| LineRenderData {
                         line_number: line.line_number,
                         data: &line.data,
@@ -115,12 +113,11 @@ struct ViewerLineWidget<'a> {
     view_index: usize,
     line_data: Option<LineRenderData<'a>>,
 
-    search_color: Color,
     itoa_buf: &'a mut itoa::Buffer,
     show_selection: bool,
     gutter_size: Option<u16>,
     start: usize,
-    regex: Option<&'a Regex>,
+    regex: Option<(Color, &'a Regex)>,
 }
 
 impl ViewerLineWidget<'_> {
@@ -211,12 +208,14 @@ impl ViewerLineWidget<'_> {
             data.get(start..end).unwrap_or("Bad char boundary handling")
         };
 
-        let mut line_widget = if let Some(m) = self.regex.and_then(|r| r.find(data.as_bytes())) {
+        let mut line_widget = if let Some((color, regex)) = self.regex
+            && let Some(m) = regex.find(data.as_bytes())
+        {
             let start = m.start();
             let end = m.end();
             let spans = vec![
                 Span::raw(&data[..start]),
-                Span::raw(&data[start..end]).bg(self.search_color),
+                Span::raw(&data[start..end]).bg(color),
                 Span::raw(&data[end..]),
             ];
             Line::from(spans)

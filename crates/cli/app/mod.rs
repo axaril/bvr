@@ -1104,36 +1104,6 @@ impl Viewer {
         commands: &CommandSystem,
         handler: &mut MouseHandler,
     ) -> Option<(u16, u16)> {
-        match self.mode {
-            InputMode::Prompt(PromptMode::Search { escaped, .. }) => {
-                let pattern = self.prompt.buf();
-
-                let pattern_mismatch = self
-                    .regex_cache
-                    .as_ref()
-                    .map(|cache| cache.escaped != escaped || cache.pattern != pattern)
-                    .unwrap_or(true);
-
-                if pattern_mismatch {
-                    let regex = if !escaped {
-                        regex_compile(pattern)
-                    } else {
-                        regex_compile(&regex::escape(pattern))
-                    }
-                    .ok();
-
-                    self.regex_cache = Some(RegexCache {
-                        pattern: pattern.to_owned(),
-                        escaped,
-                        regex,
-                    })
-                }
-            }
-            _ => {
-                self.regex_cache = None;
-            }
-        }
-
         let [tab_chunk, mut mux_chunk, status_chunk, cmd_chunk] = mux::split_mux(f.area())?;
 
         let buf = f.buffer_mut();
@@ -1184,15 +1154,67 @@ impl Viewer {
             mux_chunk,
             buf,
             |pane_chunk, buf, view_index, instance| {
+                let regex = {
+                    let mut editing_search = false;
+                    match self.mode {
+                        InputMode::Prompt(PromptMode::Search { escaped, edit }) => {
+                            let pattern = self.prompt.buf();
+
+                            let pattern_mismatch = self
+                                .regex_cache
+                                .as_ref()
+                                .map(|cache| cache.escaped != escaped || cache.pattern != pattern)
+                                .unwrap_or(true);
+
+                            if pattern_mismatch {
+                                let regex = if !escaped {
+                                    regex_compile(pattern)
+                                } else {
+                                    regex_compile(&regex::escape(pattern))
+                                }
+                                .ok();
+
+                                self.regex_cache = Some(RegexCache {
+                                    pattern: pattern.to_owned(),
+                                    escaped,
+                                    regex,
+                                })
+                            }
+
+                            editing_search = edit;
+                        }
+                        _ => {
+                            self.regex_cache = None;
+                        }
+                    }
+
+                    if active_index == view_index {
+                        let regex = self
+                            .regex_cache
+                            .as_ref()
+                            .and_then(|cache| cache.regex.as_ref());
+
+                        regex.map(|regex| {
+                            (
+                                if editing_search {
+                                    instance.compositor_mut().selected_filter().unwrap().color()
+                                } else {
+                                    instance.color_selector().peek_color()
+                                },
+                                regex,
+                            )
+                        })
+                    } else {
+                        None
+                    }
+                };
+
                 viewer::Widget {
                     view_index,
                     instance,
                     show_selection: self.mode == InputMode::Visual,
                     gutter: self.gutter,
-                    regex: self
-                        .regex_cache
-                        .as_ref()
-                        .and_then(|cache| cache.regex.as_ref()),
+                    regex,
                 }
                 .render(pane_chunk, buf, handler);
             },
