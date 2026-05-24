@@ -1,33 +1,33 @@
-use crate::{app::control::ViewDelta, direction::Direction, viewport::Viewport};
+use crate::{app::control::ViewDelta, direction::Direction, view_bounds::ViewBounds};
 
 pub struct HelpState {
-    viewport: Viewport,
+    bounds: ViewBounds,
 }
 
 impl HelpState {
     pub fn new() -> Self {
         Self {
-            viewport: Viewport::new(),
+            bounds: ViewBounds::new(),
         }
     }
 
-    pub fn viewport(&self) -> &Viewport {
-        &self.viewport
+    pub fn view_bounds(&self) -> &ViewBounds {
+        &self.bounds
     }
 
     pub fn set_height(&mut self, height: usize) {
-        self.viewport.fit(height, 0);
+        self.bounds.fit(height, 0);
     }
 
-    pub fn pan_vertically(&mut self, dir: Direction, delta: ViewDelta) {
+    pub fn pan_vertical(&mut self, dir: Direction, delta: ViewDelta) {
         let delta = match delta {
             ViewDelta::Number { value } => usize::from(value),
-            ViewDelta::Page => self.viewport.height(),
-            ViewDelta::HalfPage => self.viewport.height().div_ceil(2),
+            ViewDelta::Page => self.bounds.height(),
+            ViewDelta::HalfPage => self.bounds.height().div_ceil(2),
             ViewDelta::Boundary if let Direction::Back = dir => usize::MAX,
             ViewDelta::Boundary => 0,
             ViewDelta::Match => unimplemented!("there is no result jumping for help"),
         };
-        self.viewport.pan_vertical(dir, delta);
+        self.bounds.pan_vertical(dir, delta);
     }
 }

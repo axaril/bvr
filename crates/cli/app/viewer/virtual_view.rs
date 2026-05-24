@@ -1,4 +1,4 @@
-use crate::{app::filters, direction::Direction, viewport::Viewport};
+use crate::{app::filters, direction::Direction, view_bounds::ViewBounds};
 
 use bvr_core::{LineSet, SegBuffer, SegStr};
 use ratatui::style::Color;
@@ -17,7 +17,7 @@ pub struct VirtualView {
     composite: LineSet,
     cache: VecDeque<CachedLine>,
 
-    viewport: Viewport,
+    bounds: ViewBounds,
 
     follow_output: bool,
     end_index: usize,
@@ -30,7 +30,7 @@ impl VirtualView {
         Self {
             composite,
             cache: VecDeque::new(),
-            viewport: Viewport::new(),
+            bounds: ViewBounds::new(),
             follow_output: false,
             need_recoloring: false,
             end_index: 0,
@@ -49,8 +49,8 @@ impl VirtualView {
         self.follow_output = follow_output;
     }
 
-    pub fn viewport(&self) -> &Viewport {
-        &self.viewport
+    pub fn view_bounds(&self) -> &ViewBounds {
+        &self.bounds
     }
 
     pub fn line_at_view_index(&self, index: usize) -> Option<usize> {
@@ -86,31 +86,31 @@ impl VirtualView {
     }
 
     fn fill_cache(&mut self, buf: &SegBuffer) {
-        while self.cache.len() < self.viewport.height() {
-            if !self.push_back(self.cache.len() + self.viewport.top(), buf) {
+        while self.cache.len() < self.bounds.height() {
+            if !self.push_back(self.cache.len() + self.bounds.top(), buf) {
                 break;
             }
         }
-        self.cache.truncate(self.viewport.height());
+        self.cache.truncate(self.bounds.height());
     }
 
     pub fn jump_vertically_to(&mut self, buf: &SegBuffer, index: usize) {
-        self.viewport.jump_vertically_to(index);
+        self.bounds.jump_vertically_to(index);
         self.cache.clear();
         self.fill_cache(buf);
     }
 
-    pub fn pan_vertically(&mut self, buf: &SegBuffer, direction: Direction, delta: usize) {
+    pub fn pan_vertical(&mut self, buf: &SegBuffer, direction: Direction, delta: usize) {
         match direction {
             Direction::Back => {
-                let delta = self.viewport.pan_vertical(direction, delta);
+                let delta = self.bounds.pan_vertical(direction, delta);
                 for i in (0..delta).rev() {
-                    self.push_front(self.viewport.top() + i, buf);
+                    self.push_front(self.bounds.top() + i, buf);
                 }
-                self.cache.truncate(self.viewport.height());
+                self.cache.truncate(self.bounds.height());
             }
             Direction::Next => {
-                let delta = self.viewport.pan_vertical(direction, delta);
+                let delta = self.bounds.pan_vertical(direction, delta);
                 for _ in 0..delta {
                     self.cache.pop_front();
                 }
@@ -124,7 +124,7 @@ impl VirtualView {
             self.jump_vertically_to(buf, self.end_index.saturating_sub(1));
         }
 
-        self.viewport.clamp(self.end_index);
+        self.bounds.clamp(self.end_index);
 
         self.fill_cache(buf);
 
@@ -173,11 +173,11 @@ impl VirtualView {
 
     pub fn insert_new_line_set(&mut self, line_set: LineSet) {
         self.cache.clear();
-        let old_line_number = self.line_at_view_index(self.viewport.top());
+        let old_line_number = self.line_at_view_index(self.bounds.top());
         self.composite = line_set;
         if let Some(old_line_number) = old_line_number {
             if let Some(index) = self.composite.find(old_line_number) {
-                self.viewport.top_to(index);
+                self.bounds.top_to(index);
             }
         }
     }
@@ -187,10 +187,10 @@ impl VirtualView {
     }
 
     pub fn fit(&mut self, height: usize, width: usize) {
-        self.viewport.fit(height, width);
+        self.bounds.fit(height, width);
     }
 
     pub fn pan_horizontal(&mut self, dir: Direction, delta: usize) {
-        self.viewport.pan_horizontal(dir, delta);
+        self.bounds.pan_horizontal(dir, delta);
     }
 }

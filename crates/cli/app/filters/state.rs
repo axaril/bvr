@@ -4,14 +4,14 @@ use crate::{
     colors::ColorSelector,
     cursor::{Cursor, CursorState, SelectionOrigin},
     direction::Direction,
-    viewport::Viewport,
+    view_bounds::ViewBounds,
 };
 use bvr_core::{LineSet, SegBuffer, matches::CompositeStrategy};
 
 pub struct Compositor {
     all_composite: LineSet,
     strategy: CompositeStrategy,
-    viewport: Viewport,
+    bounds: ViewBounds,
     cursor: CursorState,
     filters: Filters,
     color_selector: ColorSelector,
@@ -21,7 +21,7 @@ impl Compositor {
     pub fn new(buf: &SegBuffer) -> Self {
         Self {
             all_composite: buf.all_line_matches(),
-            viewport: Viewport::new(),
+            bounds: ViewBounds::new(),
             cursor: CursorState::new(),
             filters: Filters::new(),
             strategy: CompositeStrategy::Union,
@@ -45,17 +45,17 @@ impl Compositor {
         &self.filters
     }
 
-    pub fn update_viewport(&mut self, viewport_height: usize) {
-        self.viewport.fit(viewport_height, 0);
-        self.viewport.clamp(self.filters.len());
+    pub fn update_view_bounds(&mut self, height: usize) {
+        self.bounds.fit(height, 0);
+        self.bounds.clamp(self.filters.len());
     }
 
     pub fn view(&self) -> impl Iterator<Item = (usize, &Filter)> {
         self.filters
             .iter()
             .enumerate()
-            .skip(self.viewport.top())
-            .take(self.viewport.height())
+            .skip(self.bounds.top())
+            .take(self.bounds.height())
     }
 
     pub fn create_composite(&mut self) -> LineSet {
@@ -74,8 +74,8 @@ impl Compositor {
     pub fn move_select(&mut self, dir: Direction, select: bool, delta: ViewDelta) {
         let delta = match delta {
             ViewDelta::Number { value } => usize::from(value),
-            ViewDelta::Page => self.viewport.height(),
-            ViewDelta::HalfPage => self.viewport.height().div_ceil(2),
+            ViewDelta::Page => self.bounds.height(),
+            ViewDelta::HalfPage => self.bounds.height().div_ceil(2),
             ViewDelta::Boundary => usize::MAX,
             ViewDelta::Match => unimplemented!("there is no result jumping for filters"),
         };
@@ -89,7 +89,7 @@ impl Compositor {
             | Cursor::Selection(i, _, SelectionOrigin::Left)
             | Cursor::Selection(_, i, SelectionOrigin::Right) => i,
         };
-        self.viewport.jump_vertically_to(i);
+        self.bounds.jump_vertically_to(i);
     }
 
     pub fn displace_filters(
@@ -125,8 +125,8 @@ impl Compositor {
 
         let delta = match delta {
             ViewDelta::Number { value } => usize::from(value),
-            ViewDelta::Page => self.viewport.height(),
-            ViewDelta::HalfPage => self.viewport.height().div_ceil(2),
+            ViewDelta::Page => self.bounds.height(),
+            ViewDelta::HalfPage => self.bounds.height().div_ceil(2),
             ViewDelta::Boundary => usize::MAX,
             ViewDelta::Match => unimplemented!("there is no result jumping for filters"),
         };
@@ -151,7 +151,7 @@ impl Compositor {
         //     | Cursor::Selection(i, _, SelectionOrigin::Left)
         //     | Cursor::Selection(_, i, SelectionOrigin::Right) => i,
         // };
-        // self.viewport.jump_vertically_to(i);
+        // self.bounds.jump_vertically_to(i);
     }
 
     pub fn clear_filters(&mut self) {

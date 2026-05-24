@@ -9,7 +9,7 @@ use crate::{
     colors::ColorSelector,
     cursor::{Cursor, CursorState, SelectionOrigin},
     direction::Direction,
-    viewport::Viewport,
+    view_bounds::ViewBounds,
 };
 use bvr_core::SegBuffer;
 use bvr_core::{Result, matches::CompositeStrategy};
@@ -42,8 +42,8 @@ impl Instance {
         &self.buf
     }
 
-    pub fn viewport(&self) -> &Viewport {
-        self.view.viewport()
+    pub fn view_bounds(&self) -> &ViewBounds {
+        self.view.view_bounds()
     }
 
     pub fn set_follow_output(&mut self, follow_output: bool) {
@@ -81,7 +81,7 @@ impl Instance {
             .and_then(|ln| self.view.composite().find(ln))
     }
 
-    pub fn update_viewport(&mut self, height: usize, width: usize) {
+    pub fn update_view_bounds(&mut self, height: usize, width: usize) {
         self.view.fit(height, width);
         self.view.set_end_index(self.visible_line_count());
     }
@@ -122,30 +122,30 @@ impl Instance {
             | Cursor::Selection(i, _, SelectionOrigin::Left)
             | Cursor::Selection(_, i, SelectionOrigin::Right) => i,
         };
-        if current < self.view.viewport().top() {
-            self.cursor.place(self.view.viewport().top());
-        } else if current >= self.view.viewport().bottom() {
+        if current < self.view.view_bounds().top() {
+            self.cursor.place(self.view.view_bounds().top());
+        } else if current >= self.view.view_bounds().bottom() {
             self.cursor
-                .place(self.view.viewport().bottom().saturating_sub(1));
+                .place(self.view.view_bounds().bottom().saturating_sub(1));
         }
     }
 
-    pub fn move_viewport_vertical(&mut self, dir: Direction, delta: ViewDelta) {
+    pub fn pan_vertical(&mut self, dir: Direction, delta: ViewDelta) {
         let delta = match delta {
             ViewDelta::Number { value } => usize::from(value),
-            ViewDelta::Page => self.view.viewport().height(),
-            ViewDelta::HalfPage => self.view.viewport().height().div_ceil(2),
+            ViewDelta::Page => self.view.view_bounds().height(),
+            ViewDelta::HalfPage => self.view.view_bounds().height().div_ceil(2),
             ViewDelta::Boundary => {
                 let top = match dir {
                     Direction::Back => 0,
-                    Direction::Next => self.view.viewport().bottom().saturating_sub(1),
+                    Direction::Next => self.view.view_bounds().bottom().saturating_sub(1),
                 };
                 self.jump_vertically_to(top);
                 self.view.set_follow_output(false);
                 return;
             }
             ViewDelta::Match => {
-                let current = self.view.viewport().top();
+                let current = self.view.view_bounds().top();
                 if let Some(next) =
                     self.compositor
                         .compute_jump(current, dir, self.view.composite())
@@ -155,15 +155,15 @@ impl Instance {
                 return;
             }
         };
-        self.view.pan_vertically(&self.buf, dir, delta);
+        self.view.pan_vertical(&self.buf, dir, delta);
         self.view.set_follow_output(false);
     }
 
-    pub fn move_viewport_horizontal(&mut self, dir: Direction, delta: ViewDelta) {
+    pub fn pan_horizontal(&mut self, dir: Direction, delta: ViewDelta) {
         let delta = match delta {
             ViewDelta::Number { value } => usize::from(value),
-            ViewDelta::Page => self.viewport().width(),
-            ViewDelta::HalfPage => self.viewport().width().div_ceil(2),
+            ViewDelta::Page => self.view_bounds().width(),
+            ViewDelta::HalfPage => self.view_bounds().width().div_ceil(2),
             _ => 0,
         };
         self.view.pan_horizontal(dir, delta);
@@ -173,8 +173,8 @@ impl Instance {
     pub fn move_select(&mut self, dir: Direction, select: bool, delta: ViewDelta) {
         let compute_delta = |i: usize| match delta {
             ViewDelta::Number { value } => usize::from(value),
-            ViewDelta::Page => self.view.viewport().height(),
-            ViewDelta::HalfPage => self.view.viewport().height().div_ceil(2),
+            ViewDelta::Page => self.view.view_bounds().height(),
+            ViewDelta::HalfPage => self.view.view_bounds().height().div_ceil(2),
             ViewDelta::Boundary => usize::MAX,
             ViewDelta::Match => i.abs_diff(
                 self.compositor

@@ -103,7 +103,7 @@ impl<'a> Widget for StatusWidget<'a> {
             if instance.is_following_output() {
                 Line::raw("Follow  ").fg(colors::STATUS_BAR_TEXT)
             } else {
-                let bottom = instance.viewport().bottom();
+                let bottom = instance.view_bounds().bottom();
                 let ln_vis = instance.visible_line_count();
                 let percentage = if ln_vis == 0 {
                     1.0
@@ -112,8 +112,8 @@ impl<'a> Widget for StatusWidget<'a> {
                 }
                 .clamp(0.0, 1.0);
 
-                let row = instance.viewport().top();
-                let col = instance.viewport().left();
+                let row = instance.view_bounds().top();
+                let col = instance.view_bounds().left();
 
                 Line::from(vec![
                     Span::raw(format!("{}:{}", row + 1, col + 1)).fg(colors::STATUS_BAR_TEXT),

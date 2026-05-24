@@ -38,7 +38,7 @@ impl<'a> ConfigViewerWidget<'a> {
 
             let cursor_state = self.app.cursor().state();
 
-            self.app.update_viewport(left_chunk.height as usize);
+            self.app.update_view_bounds(left_chunk.height as usize);
             let view = self.app.view();
 
             (left_chunk.y..left_chunk.bottom())

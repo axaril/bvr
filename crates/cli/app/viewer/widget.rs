@@ -32,7 +32,7 @@ bitflags! {
 
 impl ViewWidget<'_> {
     pub fn render(self, area: Rect, buf: &mut Buffer, handle: &mut MouseHandler) {
-        let left = self.instance.viewport().left();
+        let left = self.instance.view_bounds().left();
         let gutter_size = self
             .gutter
             .then(|| (self.instance.total_line_count().max(1).ilog10() as u16 + 1).max(4));
@@ -42,7 +42,7 @@ impl ViewWidget<'_> {
         let cursor_state = self.instance.cursor().state();
 
         self.instance
-            .update_viewport(area.height as usize, area.width as usize);
+            .update_view_bounds(area.height as usize, area.width as usize);
 
         self.instance.populate_view();
         let view = self.instance.view_cache();

@@ -93,10 +93,10 @@ impl<'a> HelpWidget<'a> {
 
         let [command_area, description_area] = Self::split_left(area, max_command_width as u16 + 4);
         command_column
-            .scroll((self.state.viewport().top() as u16, 0))
+            .scroll((self.state.view_bounds().top() as u16, 0))
             .render(command_area, buf);
         description_column
-            .scroll((self.state.viewport().top() as u16, 0))
+            .scroll((self.state.view_bounds().top() as u16, 0))
             .render(description_area, buf);
     }
 }
