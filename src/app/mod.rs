@@ -33,6 +33,7 @@ use crate::{
 };
 use actions::{ConfigAction, FilterAction};
 use anyhow::Result;
+use arboard::Clipboard;
 use bvr_core::{SegBuffer, err::Error, index::BoxedStream, matches::CompositeStrategy};
 use crossterm::{clipboard::CopyToClipboard, event};
 use regex::bytes::Regex;
@@ -69,6 +70,7 @@ pub struct App {
     app: State,
     term: terminal::TerminalState,
     refresh: bool,
+    clipboard: Option<Clipboard>,
     action_queue: VecDeque<Action>,
     commands: CommandSystem,
 }
@@ -171,6 +173,7 @@ impl App {
         Self {
             app: state,
             term: TerminalState::new(term),
+            clipboard: Clipboard::new().ok(),
             action_queue: VecDeque::new(),
             refresh: false,
             commands: CommandSystem::new(Self::DEFAULT_COMMANDS),
@@ -732,6 +735,10 @@ impl App {
 
     fn command_help(&mut self, _: &[&str]) {
         self.app.viewer.mode = InputMode::Help;
+        self.app
+            .viewer
+            .status
+            .msg("help: displaying help".to_string());
     }
 
     fn command_quit(&mut self, _: &[&str]) {
@@ -782,6 +789,10 @@ impl App {
 
     fn command_refresh(&mut self, _: &[&str]) {
         self.refresh = true;
+        self.app
+            .viewer
+            .status
+            .msg("refresh: refresh requested".to_string());
     }
 
     fn command_open(&mut self, args: &[&str]) {
@@ -799,15 +810,25 @@ impl App {
         }
     }
 
+    fn pbcopy(&mut self, text: &str) -> anyhow::Result<()> {
+        if let Some(clipboard) = &mut self.clipboard {
+            clipboard.set_text(text)?;
+        } else {
+            crossterm::execute!(
+                self.term.backend_mut(),
+                CopyToClipboard::to_clipboard_from(text)
+            )?;
+        }
+
+        Ok(())
+    }
+
     fn command_pbcopy(&mut self, _: &[&str]) {
         if let Some(instance) = self.app.viewer.mux.active_mut() {
             match instance.export_string() {
-                Ok(text) => {
-                    match crossterm::execute!(
-                        self.term.backend_mut(),
-                        CopyToClipboard::to_clipboard_from(text)
-                    ) {
-                        Ok(_) => {
+                Ok(ref text) => {
+                    match self.pbcopy(text) {
+                        Ok(()) => {
                             self.app
                                 .viewer
                                 .status
@@ -838,14 +859,30 @@ impl App {
 
     fn command_gutter(&mut self, _: &[&str]) {
         self.app.viewer.toggle_gutter();
+        self.app.viewer.status.msg(format!(
+            "gutter: {}",
+            if self.app.viewer.gutter {
+                "enabled"
+            } else {
+                "disabled"
+            }
+        ));
     }
 
     fn command_mux_tabs(&mut self, _: &[&str]) {
         self.app.viewer.mux.set_mode(mux::Mode::ActiveOnly);
+        self.app
+            .viewer
+            .status
+            .msg("mux: set to tabs mode".to_string());
     }
 
     fn command_mux_panes(&mut self, _: &[&str]) {
         self.app.viewer.mux.set_mode(mux::Mode::SplitView);
+        self.app
+            .viewer
+            .status
+            .msg("mux: set to split view mode".to_string());
     }
 
     fn command_mux(&mut self, _: &[&str]) {
@@ -934,24 +971,40 @@ impl App {
 
     fn command_filter_load(&mut self, _: &[&str]) {
         self.app.viewer.mode = InputMode::Config;
+        self.app
+            .viewer
+            .status
+            .msg("filter load: select filter to load".to_string());
     }
 
     fn command_filter_clear(&mut self, _: &[&str]) {
         self.app.viewer.demux_mut(|instance| {
             instance.clear_filters();
         });
+        self.app
+            .viewer
+            .status
+            .msg("filter clear: cleared filters".to_string());
     }
 
     fn command_filter_union(&mut self, _: &[&str]) {
         self.app.viewer.demux_mut(|instance| {
             instance.set_composite_strategy(CompositeStrategy::Union);
         });
+        self.app
+            .viewer
+            .status
+            .msg("filter strategy: set to union".to_string());
     }
 
     fn command_filter_intersect(&mut self, _: &[&str]) {
         self.app.viewer.demux_mut(|instance| {
             instance.set_composite_strategy(CompositeStrategy::Intersection);
         });
+        self.app
+            .viewer
+            .status
+            .msg("filter strategy: set to intersection".to_string());
     }
 
     fn command_export(&mut self, args: &[&str]) {
