@@ -84,7 +84,7 @@ impl App {
 
         app.add_command(
             Command::new("help")
-                .aliases(&["h"])
+                .aliases(&["h", "?"])
                 .description("Display all commands.")
                 .bind(Self::command_help),
         );
@@ -1376,6 +1376,7 @@ impl Viewer {
         let mut cursor = None;
         prompt::Widget {
             mode: self.mode,
+            commands,
             prompt: &mut self.prompt,
             cursor: &mut cursor,
         }

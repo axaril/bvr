@@ -64,11 +64,11 @@ impl<'a> RegexHighlighter<'a> {
             '\\' if let Some(nc) = self.base.peek() => {
                 self.flush_lit();
                 self.base
-                    .eat_and_color(1 + nc.len_utf8(), colors::regex::ESCAPE);
+                    .eat_and_color(1 + nc.len_utf8()).fg(colors::regex::ESCAPE);
             }
             ']' => {
                 self.flush_lit();
-                self.base.eat_and_color(1, colors::regex::CLASS);
+                self.base.eat_and_color(1).fg(colors::regex::CLASS);
                 self.in_class = false;
                 self.class_open_idx = None;
             }
@@ -85,7 +85,7 @@ impl<'a> RegexHighlighter<'a> {
             '\\' if let Some(nc) = self.base.peek() => {
                 self.flush_lit();
                 self.base
-                    .eat_and_color(1 + nc.len_utf8(), colors::regex::ESCAPE);
+                    .eat_and_color(1 + nc.len_utf8()).fg(colors::regex::ESCAPE);
             }
             '[' => {
                 self.flush_lit();
@@ -93,9 +93,9 @@ impl<'a> RegexHighlighter<'a> {
                 self.in_class = true;
 
                 if let Some('^') = self.base.peek() {
-                    self.base.eat_and_color(2, colors::regex::CLASS);
+                    self.base.eat_and_color(2).fg(colors::regex::CLASS);
                 } else {
-                    self.base.eat_and_color(1, colors::regex::CLASS);
+                    self.base.eat_and_color(1).fg(colors::regex::CLASS);
                 }
             }
             '(' => {
@@ -133,30 +133,29 @@ impl<'a> RegexHighlighter<'a> {
                         + 1
                 };
                 self.group_stack.push(self.base.spans.len());
-                self.base.eat_and_color(group_prefix_size, color);
+                self.base.eat_and_color(group_prefix_size).fg(color);
             }
             ')' => {
                 self.flush_lit();
                 if self.group_stack.pop().is_some() {
                     let color =
                         colors::regex::GROUP[self.group_stack.len() % colors::regex::GROUP.len()];
-                    self.base.eat_and_color(1, color);
+                    self.base.eat_and_color(1).fg(color);
                 } else {
                     // Unmatched `)` — no opening paren
-                    let token = self.base.eat(1);
-                    self.base.spans.push(Span::raw(token).bg(colors::ERROR));
+                    self.base.eat_and_color(1).bg(colors::ERROR);
                 }
             }
             '*' | '+' | '?' => {
                 self.flush_lit();
-                self.base.eat_and_color(1, colors::regex::QUANTIFIER);
+                self.base.eat_and_color(1).fg(colors::regex::QUANTIFIER);
             }
             '{' => {
                 if let Some(qlen) = self.base.scan_bytes_until(|b| b == b'}') {
                     self.flush_lit();
                     // Include the closing `}`
                     let qlen = qlen + 1;
-                    self.base.eat_and_color(qlen, colors::regex::QUANTIFIER);
+                    self.base.eat_and_color(qlen).fg(colors::regex::QUANTIFIER);
                 } else {
                     // just a regular literal
                     self.lit_start.get_or_insert(self.base.i);
@@ -165,11 +164,11 @@ impl<'a> RegexHighlighter<'a> {
             }
             '^' | '$' => {
                 self.flush_lit();
-                self.base.eat_and_color(1, colors::regex::ANCHOR);
+                self.base.eat_and_color(1).fg(colors::regex::ANCHOR);
             }
             '.' | '|' => {
                 self.flush_lit();
-                self.base.eat_and_color(1, colors::regex::META);
+                self.base.eat_and_color(1).fg(colors::regex::META);
             }
             ch => {
                 self.lit_start.get_or_insert(self.base.i);
@@ -191,6 +190,6 @@ impl<'a> RegexHighlighter<'a> {
             self.base.spans[idx].style = Style::new().bg(colors::ERROR);
         }
 
-        Line::from(self.base.spans)
+        self.base.extract()
     }
 }

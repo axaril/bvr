@@ -10,6 +10,7 @@ use crate::{
 
 pub struct PromptWidget<'a> {
     pub prompt: &'a mut super::State,
+    pub commands: &'a [crate::app::Command],
     pub mode: InputMode,
     pub cursor: &'a mut Option<(u16, u16)>,
 }
@@ -65,6 +66,10 @@ impl<'a> Widget for PromptWidget<'a> {
         let prompt_line = match mode {
             PromptMode::Search { escaped: false, .. } => {
                 super::highlight::regex::RegexHighlighter::new(cmd_buf).highlight()
+            }
+            PromptMode::Command => {
+                super::highlight::command::CommandHighlighter::new(cmd_buf)
+                    .highlight(self.commands)
             }
             _ => Line::raw(cmd_buf),
         };
