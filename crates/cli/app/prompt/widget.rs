@@ -3,14 +3,14 @@ use std::sync::OnceLock;
 use ratatui::{prelude::*, widgets::*};
 
 use crate::{
-    app::control::{InputMode, PromptMode},
+    app::{command::CommandSystem, control::{InputMode, PromptMode}},
     colors,
     cursor::{Cursor, SelectionOrigin},
 };
 
 pub struct PromptWidget<'a> {
     pub prompt: &'a mut super::State,
-    pub commands: &'a [crate::app::Command],
+    pub commands: &'a CommandSystem,
     pub mode: InputMode,
     pub cursor: &'a mut Option<(u16, u16)>,
 }

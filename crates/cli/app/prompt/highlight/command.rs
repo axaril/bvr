@@ -1,4 +1,4 @@
-use crate::app::Command;
+use crate::app::{Command, command::CommandSystem};
 use crate::colors;
 
 use ratatui::prelude::*;
@@ -48,7 +48,7 @@ impl<'a> CommandHighlighter<'a> {
         Some(span)
     }
 
-    pub fn highlight(mut self, commands: &[Command]) -> Line<'a> {
+    pub fn highlight(mut self, commands: &CommandSystem) -> Line<'a> {
         let mut cmd: Option<&Command> = None;
         let mut take_remaining_as_args = TakeRemaining::None;
 
@@ -87,7 +87,7 @@ impl<'a> CommandHighlighter<'a> {
                     break;
                 }
             } else {
-                cmd = commands
+                cmd = commands.commands()
                     .iter()
                     .find(|cmd| cmd.name == arg.content || cmd.aliases.contains(&arg.content));
 
