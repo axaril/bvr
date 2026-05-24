@@ -265,7 +265,7 @@ impl SegBuffer {
         LineSet::all(self.index.clone())
     }
 
-    pub fn write_bytes<W>(&mut self, output: &mut W, lines: &LineSet) -> Result<()>
+    pub fn write_bytes<W>(&self, output: &mut W, lines: &LineSet) -> Result<()>
     where
         W: Write,
     {
@@ -281,11 +281,12 @@ impl SegBuffer {
                     writer.write_all(line.as_bytes())?;
                 }
             }
-            None => match &mut self.map.repr {
+            None => match &self.map.repr {
                 BufferRepr::File { file, .. } => {
+                    let mut file = file.try_clone()?;
                     file.seek(std::io::SeekFrom::Start(0))?;
                     let mut output = output;
-                    std::io::copy(file, &mut output)?;
+                    std::io::copy(&mut file, &mut output)?;
                 }
                 BufferRepr::Stream(inner) => {
                     let mut writer = BufWriter::new(output);

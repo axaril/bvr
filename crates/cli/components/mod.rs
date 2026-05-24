@@ -2,4 +2,4 @@ pub mod cursor;
 pub mod viewport;
 
 pub mod instance;
-pub mod viewer;
+pub mod virtual_view;

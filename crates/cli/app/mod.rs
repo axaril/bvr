@@ -682,7 +682,7 @@ impl App {
 
         if pipe {
             let mut stdin = child.stdin.take().unwrap();
-            if let Some(instance) = self.app.viewer.mux.active_mut() {
+            if let Some(instance) = self.app.viewer.mux.active() {
                 instance.write_bytes(&mut stdin)?;
             }
         }
@@ -808,7 +808,7 @@ impl App {
         if let Ok(line_number) = command.parse::<usize>() {
             if let Some(instance) = self.app.viewer.mux.active_mut() {
                 if let Some(idx) = instance.nearest_index(line_number) {
-                    instance.viewport_mut().jump_vertically_to(idx);
+                    instance.jump_vertically_to(idx);
                 }
             }
         } else {
@@ -1056,7 +1056,7 @@ impl App {
             return;
         };
         let path = PathBuf::from(path);
-        if let Some(instance) = self.app.viewer.mux.active_mut() {
+        if let Some(instance) = self.app.viewer.mux.active() {
             if let Err(err) = OpenOptions::new()
                 .create_new(true)
                 .write(true)

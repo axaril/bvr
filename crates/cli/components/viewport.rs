@@ -62,9 +62,6 @@ impl Viewport {
         if self.top >= end_index {
             self.top = end_index.saturating_sub(1);
         }
-        if self.height > end_index {
-            self.height = end_index;
-        }
     }
 
     pub fn top_to(&mut self, index: usize) {
@@ -97,14 +94,14 @@ impl Viewport {
         }
     }
 
-    pub fn pan_vertical(&mut self, direction: Direction) {
-        self.top = match direction {
-            Direction::Back => self.top.saturating_sub(1),
-            Direction::Next => self.top.saturating_add(1),
-        }
+    pub fn pan_vertical(&mut self, direction: Direction) -> bool {
+        match direction {
+            Direction::Back => self.top.checked_sub(1),
+            Direction::Next => self.top.checked_add(1)
+        }.inspect(|v| self.top = *v).is_some()
     }
 
-    pub fn pan_horizontal(&mut self, direction: Direction) {
+    pub fn pan_horizontal(&mut self, direction: Direction)  {
         self.left = match direction {
             Direction::Back => self.left.saturating_sub(1),
             Direction::Next => self.left.saturating_add(1),
