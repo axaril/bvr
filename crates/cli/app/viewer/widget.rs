@@ -2,20 +2,16 @@ use crate::app::{
     actions::{Action, NormalAction},
     control::ViewDelta,
     mouse::MouseHandler,
+    viewer::instance::Instance,
 };
-use crate::{
-    app::actions::VisualAction,
-    colors,
-    components::{cursor::Cursor, instance::Instance},
-    direction::Direction,
-};
+use crate::{app::actions::VisualAction, colors, cursor::Cursor, direction::Direction};
 use bitflags::bitflags;
 use crossterm::event::MouseEventKind;
 use ratatui::prelude::*;
 use regex::bytes::Regex;
 use unicode_segmentation::UnicodeSegmentation;
 
-pub struct LineViewerWidget<'a> {
+pub struct ViewWidget<'a> {
     pub view_index: usize,
     pub instance: &'a mut Instance,
     pub show_selection: bool,
@@ -42,7 +38,7 @@ bitflags! {
     }
 }
 
-impl LineViewerWidget<'_> {
+impl ViewWidget<'_> {
     pub fn render(self, area: Rect, buf: &mut Buffer, handle: &mut MouseHandler) {
         let left = self.instance.viewport().left();
         let search_color = self.instance.color_selector().peek_color();

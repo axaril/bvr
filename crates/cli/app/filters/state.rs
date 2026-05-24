@@ -2,11 +2,9 @@ use super::{Filter, FilterSet, Filters, Mask};
 use crate::{
     app::control::ViewDelta,
     colors::ColorSelector,
-    components::{
-        cursor::{Cursor, CursorState, SelectionOrigin},
-        viewport::Viewport,
-    },
+    cursor::{Cursor, CursorState, SelectionOrigin},
     direction::Direction,
+    viewport::Viewport,
 };
 use bvr_core::{LineSet, SegBuffer, matches::CompositeStrategy};
 

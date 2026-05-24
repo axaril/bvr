@@ -24,8 +24,9 @@ use crate::{
         actions::HelpAction,
         command::Command,
         terminal::{Terminal, TerminalState},
+        viewer::Instance,
     },
-    components::{cursor::Cursor, instance::Instance},
+    cursor::Cursor,
     direction::Direction,
     regex_compile,
 };

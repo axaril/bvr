@@ -1,9 +1,11 @@
 use ratatui::prelude::*;
 
 use crate::{
-    app::control::{InputMode, PromptMode},
+    app::{
+        control::{InputMode, PromptMode},
+        viewer::Instance,
+    },
     colors,
-    components::instance::Instance,
 };
 
 pub struct StatusWidget<'a> {
@@ -13,9 +15,7 @@ pub struct StatusWidget<'a> {
 }
 
 impl<'a> StatusWidget<'a> {
-    pub fn new(
-        input_mode: InputMode,
-    ) -> Self {
+    pub fn new(input_mode: InputMode) -> Self {
         Self {
             input_mode,
             instance: None,

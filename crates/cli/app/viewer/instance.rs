@@ -1,17 +1,15 @@
 use std::path::{Path, PathBuf};
 
-use super::{
-    cursor::{Cursor, CursorState, SelectionOrigin},
-    virtual_view::{CachedLine, VirtualView},
-    viewport::Viewport,
-};
+use super::virtual_view::{CachedLine, VirtualView};
 use crate::{
     app::{
         control::ViewDelta,
         filters::{self, Filter, FilterExportSet},
     },
     colors::ColorSelector,
+    cursor::{Cursor, CursorState, SelectionOrigin},
     direction::Direction,
+    viewport::Viewport,
 };
 use bvr_core::SegBuffer;
 use bvr_core::{Result, matches::CompositeStrategy};

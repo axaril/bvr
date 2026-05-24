@@ -1,9 +1,7 @@
 use crate::{
-    components::{
-        cursor::{Cursor, CursorState},
-        viewport::Viewport,
-    },
+    cursor::{Cursor, CursorState, SelectionOrigin},
     direction::Direction,
+    viewport::Viewport,
 };
 
 #[derive(Clone, Copy)]
@@ -80,8 +78,8 @@ impl PromptApp {
         self.viewport.fit(1, viewport_width);
         match self.cursor.state() {
             Cursor::Singleton(i)
-            | Cursor::Selection(i, _, crate::components::cursor::SelectionOrigin::Left)
-            | Cursor::Selection(_, i, crate::components::cursor::SelectionOrigin::Right) => {
+            | Cursor::Selection(i, _, SelectionOrigin::Left)
+            | Cursor::Selection(_, i, SelectionOrigin::Right) => {
                 self.viewport.jump_horizontally_to(i);
             }
         }

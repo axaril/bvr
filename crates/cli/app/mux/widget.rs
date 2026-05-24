@@ -3,7 +3,7 @@ use std::sync::OnceLock;
 use ratatui::{prelude::*, widgets::*};
 
 use super::Mode;
-use crate::{colors, components::instance::Instance};
+use crate::{app::viewer::Instance, colors};
 
 pub struct MultiplexerWidget<'a> {
     pub override_mode: Option<Mode>,

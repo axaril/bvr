@@ -1,6 +1,5 @@
-use crate::{app::filters, direction::Direction};
+use crate::{app::filters, direction::Direction, viewport::Viewport};
 
-use super::viewport::Viewport;
 use bvr_core::{LineSet, SegBuffer, SegStr};
 use ratatui::style::Color;
 use std::collections::VecDeque;
