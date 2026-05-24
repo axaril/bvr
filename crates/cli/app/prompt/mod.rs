@@ -1,4 +1,4 @@
-mod regex_highlight;
+mod highlight;
 mod state;
 mod widget;
 

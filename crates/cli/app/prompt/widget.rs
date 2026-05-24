@@ -64,7 +64,7 @@ impl<'a> Widget for PromptWidget<'a> {
         // Syntax-highlight the input when editing a regex (not escaped/literal mode).
         let prompt_line = match mode {
             PromptMode::Search { escaped: false, .. } => {
-                super::regex_highlight::RegexHighlighter::new(cmd_buf).highlight()
+                super::highlight::regex::RegexHighlighter::new(cmd_buf).highlight()
             }
             _ => Line::raw(cmd_buf),
         };
