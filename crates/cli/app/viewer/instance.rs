@@ -86,8 +86,12 @@ impl Instance {
         self.view.set_end_index(self.visible_line_count());
     }
 
-    pub fn view(&mut self) -> impl Iterator<Item = &CachedLine> {
-        self.view.cache_view(&self.buf, Some(&self.compositor))
+    pub fn populate_view(&mut self) {
+        self.view.populate(&self.buf, Some(&self.compositor));
+    }
+
+    pub fn view_cache(&self) -> impl Iterator<Item = &CachedLine> {
+        self.view.view()
     }
 
     pub fn jump_vertically_to(&mut self, index: usize) {

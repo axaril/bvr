@@ -119,11 +119,7 @@ impl VirtualView {
         }
     }
 
-    pub fn cache_view(
-        &mut self,
-        buf: &SegBuffer,
-        compositor: Option<&filters::State>,
-    ) -> impl Iterator<Item = &CachedLine> {
+    pub fn populate(&mut self, buf: &SegBuffer, compositor: Option<&filters::State>) {
         if self.follow_output {
             self.jump_vertically_to(buf, self.end_index.saturating_sub(1));
         }
@@ -135,7 +131,9 @@ impl VirtualView {
         if let Some(compositor) = compositor {
             self.color_cache(compositor);
         }
+    }
 
+    pub fn view(&self) -> impl Iterator<Item = &CachedLine> {
         self.cache.iter()
     }
 
