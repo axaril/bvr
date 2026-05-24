@@ -22,7 +22,6 @@ exclude = [
 
 [[bin]]
 bench = false
-path = "crates/cli/main.rs"
 name = "bvr"
 
 [workspace]
