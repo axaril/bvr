@@ -1,17 +1,17 @@
 mod actions;
 mod command;
-pub mod control;
-mod help;
+mod control;
 mod keybinding;
 mod mouse;
 mod terminal;
 
 mod config;
-pub mod filters;
+mod filters;
 mod mux;
 mod prompt;
 mod status;
 mod viewer;
+mod help;
 
 use self::{
     actions::{Action, CommandAction, NormalAction, VisualAction},
