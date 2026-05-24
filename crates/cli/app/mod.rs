@@ -7,11 +7,11 @@ mod terminal;
 
 mod config;
 mod filters;
+mod help;
 mod mux;
 mod prompt;
 mod status;
 mod viewer;
-mod help;
 
 use self::{
     actions::{Action, CommandAction, NormalAction, VisualAction},
@@ -213,8 +213,6 @@ impl App {
                 ),
         );
 
-        app.app.viewer.help = help::HelpManual::generate(&app.commands);
-
         app
     }
 
@@ -251,7 +249,8 @@ impl App {
                 self.refresh = false;
             }
 
-            let mut render = |f: &mut ratatui::Frame| self.app.viewer.ui(f, &mut mouse_handler);
+            let mut render =
+                |f: &mut ratatui::Frame| self.app.viewer.ui(f, &self.commands, &mut mouse_handler);
 
             const MIN_REFRESH_DURATION: Duration = Duration::from_millis(16);
             const MIN_POLL_DURATION: Duration = Duration::from_millis(32);
@@ -1165,7 +1164,7 @@ pub struct Viewer {
     prompt: prompt::State,
     regex_cache: Option<RegexCache>,
     filter_config: config::State,
-    help: help::HelpManual,
+    help: help::State,
     gutter: bool,
     linked_filters: bool,
 }
@@ -1181,7 +1180,7 @@ impl Viewer {
             filter_config: config::State::new(),
             gutter: true,
             linked_filters: false,
-            help: help::HelpManual::new(),
+            help: help::State::new(),
         }
     }
 
@@ -1268,7 +1267,12 @@ impl Viewer {
         }
     }
 
-    fn ui(&mut self, f: &mut ratatui::Frame, handler: &mut MouseHandler) -> Option<(u16, u16)> {
+    fn ui(
+        &mut self,
+        f: &mut ratatui::Frame,
+        commands: &[Command],
+        handler: &mut MouseHandler,
+    ) -> Option<(u16, u16)> {
         match self.mode {
             InputMode::Prompt(PromptMode::Search { escaped, .. }) => {
                 let pattern = self.prompt.buf();
@@ -1337,7 +1341,9 @@ impl Viewer {
                 }
                 InputMode::Help => {
                     self.help.set_height(usize::from(area.height));
-                    self.help.render(area, buf);
+                    help::Widget::hydrate(&mut self.help)
+                        .commands(commands)
+                        .render(area, buf);
                 }
                 _ => {}
             }
