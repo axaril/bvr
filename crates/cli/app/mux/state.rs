@@ -1,4 +1,4 @@
-use crate::{components::instance::Instance, direction::Direction};
+use crate::{app::viewer::Instance, direction::Direction};
 
 #[derive(Clone, Copy)]
 pub enum MultiplexerMode {

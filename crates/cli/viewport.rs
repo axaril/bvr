@@ -97,11 +97,13 @@ impl Viewport {
     pub fn pan_vertical(&mut self, direction: Direction) -> bool {
         match direction {
             Direction::Back => self.top.checked_sub(1),
-            Direction::Next => self.top.checked_add(1)
-        }.inspect(|v| self.top = *v).is_some()
+            Direction::Next => self.top.checked_add(1),
+        }
+        .inspect(|v| self.top = *v)
+        .is_some()
     }
 
-    pub fn pan_horizontal(&mut self, direction: Direction)  {
+    pub fn pan_horizontal(&mut self, direction: Direction) {
         self.left = match direction {
             Direction::Back => self.left.saturating_sub(1),
             Direction::Next => self.left.saturating_add(1),

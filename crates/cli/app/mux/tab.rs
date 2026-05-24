@@ -1,7 +1,13 @@
 use crossterm::event::MouseEventKind;
 use ratatui::prelude::*;
 
-use crate::{app::{actions::{Action, NormalAction}, mouse::MouseHandler}, colors};
+use crate::{
+    app::{
+        actions::{Action, NormalAction},
+        mouse::MouseHandler,
+    },
+    colors,
+};
 
 pub struct TabWidget<'a> {
     pub view_index: usize,

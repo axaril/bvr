@@ -1,10 +1,8 @@
 use crate::{
     app::{control::ViewDelta, filters::FilterExportSet},
-    components::{
-        cursor::{Cursor, CursorState, SelectionOrigin},
-        viewport::Viewport,
-    },
+    cursor::{Cursor, CursorState, SelectionOrigin},
     direction::Direction,
+    viewport::Viewport,
 };
 
 use super::{APP_ID, FILTER_FILE, storage_dir_create};

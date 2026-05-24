@@ -1,8 +1,5 @@
 use super::super::mouse::MouseHandler;
-use crate::{
-    colors,
-    components::cursor::Cursor,
-};
+use crate::{colors, cursor::Cursor};
 use bitflags::bitflags;
 use ratatui::{prelude::*, widgets::*};
 use std::sync::OnceLock;

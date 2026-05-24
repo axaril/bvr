@@ -1,8 +1,9 @@
 mod app;
 mod colors;
-mod components;
+mod cursor;
 mod direction;
 mod text;
+mod viewport;
 
 use anyhow::Result;
 use app::State;

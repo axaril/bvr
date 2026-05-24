@@ -2,7 +2,7 @@ use super::super::{
     actions::{Action, FilterAction},
     mouse::MouseHandler,
 };
-use crate::{app::filters::Filter, colors, components::cursor::Cursor};
+use crate::{app::filters::Filter, colors, cursor::Cursor};
 use bitflags::bitflags;
 use crossterm::event::MouseEventKind;
 use ratatui::{prelude::*, widgets::*};

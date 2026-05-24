@@ -2,7 +2,11 @@ use std::sync::OnceLock;
 
 use ratatui::{prelude::*, widgets::*};
 
-use crate::{app::control::{InputMode, PromptMode}, colors, components::cursor::{Cursor, SelectionOrigin}};
+use crate::{
+    app::control::{InputMode, PromptMode},
+    colors,
+    cursor::{Cursor, SelectionOrigin},
+};
 
 pub struct PromptWidget<'a> {
     pub prompt: &'a mut super::State,

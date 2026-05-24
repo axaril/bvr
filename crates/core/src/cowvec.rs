@@ -942,7 +942,6 @@ mod test {
 
     #[test]
     fn test_atomic_ordering_optimization() {
-
         let (arr, mut writer) = CowVec::<usize>::new();
 
         const THREADS: usize = 20;

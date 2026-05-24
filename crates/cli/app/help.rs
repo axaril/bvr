@@ -1,6 +1,9 @@
 use std::sync::OnceLock;
 
-use ratatui::{prelude::*, widgets::{Block, Paragraph}};
+use ratatui::{
+    prelude::*,
+    widgets::{Block, Paragraph},
+};
 
 use crate::{app::control::ViewDelta, colors, direction::Direction};
 
@@ -61,7 +64,13 @@ impl HelpManual {
         let mut command_lines = Vec::new();
         let mut description_lines = Vec::new();
         let mut max_command_width = 0;
-        Self::walk_commands(&mut command_lines, &mut description_lines, commands, 0, &mut max_command_width);
+        Self::walk_commands(
+            &mut command_lines,
+            &mut description_lines,
+            commands,
+            0,
+            &mut max_command_width,
+        );
 
         let command_column =
             Paragraph::new(command_lines).wrap(ratatui::widgets::Wrap { trim: false });
@@ -113,7 +122,8 @@ impl HelpManual {
             .get_or_init(|| Block::new().bg(colors::BLACK))
             .render(area, buf);
 
-        let [command_area, description_area] = Self::split_left(area, self.max_command_width as u16 + 4);
+        let [command_area, description_area] =
+            Self::split_left(area, self.max_command_width as u16 + 4);
         self.command_column
             .clone()
             .scroll((self.top as u16, 0))

@@ -135,7 +135,8 @@ impl<'a> RegexHighlighter<'a> {
             }
             '(' => {
                 self.flush_lit();
-                let color = colors::regex::GROUP[self.group_stack.len() % colors::regex::GROUP.len()];
+                let color =
+                    colors::regex::GROUP[self.group_stack.len() % colors::regex::GROUP.len()];
                 // `(`, `(?:`, `(?=`, `(?!`, `(?<=`, `(?<!` `(?<name>`
                 let group_prefix_size = {
                     let mut done = false;
@@ -172,11 +173,13 @@ impl<'a> RegexHighlighter<'a> {
             ')' => {
                 self.flush_lit();
                 if self.group_stack.pop().is_some() {
-                    let color = colors::regex::GROUP[self.group_stack.len() % colors::regex::GROUP.len()];
+                    let color =
+                        colors::regex::GROUP[self.group_stack.len() % colors::regex::GROUP.len()];
                     self.eat_and_color(1, color);
                 } else {
                     // Unmatched `)` — no opening paren
-                    self.spans.push(Span::raw(self.tokens.eat(1)).bg(colors::ERROR));
+                    self.spans
+                        .push(Span::raw(self.tokens.eat(1)).bg(colors::ERROR));
                 }
             }
             '*' | '+' | '?' => {
