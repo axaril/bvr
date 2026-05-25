@@ -951,7 +951,7 @@ impl App {
         let Some(source) = self.app.viewer.mux.active_mut() else {
             return;
         };
-        let name: String = args.into_iter().copied().collect::<Vec<&str>>().join(" ");
+        let name: String = args.join(" ");
         let export = source.compositor_mut().filters().export(Some(name));
 
         if let Err(err) = self.app.viewer.config.add_filter(export) {
