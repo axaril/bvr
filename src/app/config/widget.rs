@@ -5,11 +5,11 @@ use ratatui::{prelude::*, widgets::*};
 use std::sync::OnceLock;
 
 pub struct ConfigViewerWidget<'a> {
-    pub(super) app: &'a mut super::State,
+    pub(super) app: &'a mut super::filters::State,
 }
 
 impl<'a> ConfigViewerWidget<'a> {
-    pub fn hydrate(state: &'a mut super::State) -> Self {
+    pub fn hydrate(state: &'a mut super::filters::State) -> Self {
         Self { app: state }
     }
 

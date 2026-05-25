@@ -1,17 +1,12 @@
-mod state;
+mod base;
+pub mod filters;
 mod widget;
 
 use anyhow::Result;
 use std::path::PathBuf;
 
-pub use state::FilterConfigState as State;
+use base::ConfigBase;
 pub use widget::ConfigViewerWidget as Widget;
-
-const APP_ID: &str = "bvr";
-
-#[allow(dead_code)]
-const CONFIG_FILE: &str = "config.toml";
-const FILTER_FILE: &str = "filters.toml";
 
 fn storage_dir(app_id: &str) -> Option<PathBuf> {
     directories_next::ProjectDirs::from("", "", app_id)
