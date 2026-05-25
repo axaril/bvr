@@ -4,6 +4,7 @@ mod cursor;
 mod direction;
 mod split;
 mod text;
+mod tpc;
 mod view_bounds;
 
 use anyhow::Result;

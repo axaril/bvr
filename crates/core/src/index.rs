@@ -192,10 +192,18 @@ impl LineIndexWriter {
 
             let mut buf_len = 0;
             loop {
-                match stream.read(&mut segment[buf_len..])? {
+                let remaining = &mut segment[buf_len..];
+                if remaining.is_empty() {
+                    break;
+                }
+                match stream.read(remaining)? {
                     0 => break,
                     l => buf_len += l,
                 }
+            }
+
+            if buf_len == 0 {
+                break;
             }
 
             let segment = Arc::new(segment.into_read_only()?);
