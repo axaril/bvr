@@ -25,12 +25,30 @@ impl<T> ConfigBase<T>
 where
     T: Serialize + for<'de> Deserialize<'de> + Default,
 {
-    pub fn load(&self) -> T {
+    fn load(&self) -> T {
         self.path
             .as_ref()
             .and_then(|path| std::fs::read_to_string(path).ok())
             .and_then(|string| toml::from_str::<T>(string.as_str()).ok())
             .unwrap_or_else(T::default)
+    }
+
+    fn save(&self) -> Result<()> {
+        let Some(path) = self.path.as_ref() else {
+            return Ok(());
+        };
+        let Some(data) = self.state.get() else {
+            return Ok(());
+        };
+        let file = std::fs::OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(true)
+            .open(path)?;
+        let mut writer = std::io::BufWriter::new(file);
+        let toml_str = toml::to_string(data)?;
+        std::io::Write::write_all(&mut writer, toml_str.as_bytes())?;
+        Ok(())
     }
 
     pub fn load_read_save<F, R>(&mut self, f: F) -> Result<Option<R>>
@@ -44,17 +62,8 @@ where
 
         let result = f(data);
 
-        let Some(path) = self.path.as_ref() else {
-            return Ok(None);
-        };
-        let file = std::fs::OpenOptions::new()
-            .create(true)
-            .write(true)
-            .truncate(true)
-            .open(path)?;
-        let mut writer = std::io::BufWriter::new(file);
-        let toml_str = toml::to_string(data)?;
-        std::io::Write::write_all(&mut writer, toml_str.as_bytes())?;
+        self.save()?;
+
         Ok(Some(result))
     }
 
