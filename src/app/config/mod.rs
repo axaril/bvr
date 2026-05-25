@@ -11,7 +11,7 @@ const APP_ID: &str = "bvr";
 
 #[allow(dead_code)]
 const CONFIG_FILE: &str = "config.toml";
-const FILTER_FILE: &str = "filters.json";
+const FILTER_FILE: &str = "filters.toml";
 
 fn storage_dir(app_id: &str) -> Option<PathBuf> {
     directories_next::ProjectDirs::from("", "", app_id)

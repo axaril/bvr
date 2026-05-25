@@ -39,9 +39,8 @@ impl FilterConfigState {
     fn load(&self) -> LoadedFilterData {
         self.path
             .as_ref()
-            .and_then(|path| std::fs::File::open(path).ok())
-            .map(std::io::BufReader::new)
-            .and_then(|reader| serde_json::from_reader::<_, LoadedFilterData>(reader).ok())
+            .and_then(|path| std::fs::read_to_string(path).ok())
+            .and_then(|string| toml::from_str::<LoadedFilterData>(string.as_str()).ok())
             .unwrap_or_else(LoadedFilterData::default)
     }
 
@@ -64,8 +63,9 @@ impl FilterConfigState {
             .write(true)
             .truncate(true)
             .open(path)?;
-        let writer = std::io::BufWriter::new(file);
-        serde_json::to_writer(writer, data)?;
+        let mut writer = std::io::BufWriter::new(file);
+        let toml_str = toml::to_string(data)?;
+        std::io::Write::write_all(&mut writer, toml_str.as_bytes())?;
         Ok(Some(result))
     }
 
