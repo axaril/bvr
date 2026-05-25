@@ -3,10 +3,10 @@ use crate::colors;
 
 use ratatui::prelude::*;
 
-use super::{ColorableSpan, Highlighter};
+use super::ColorableSpan;
 
 pub struct CommandHighlighter<'a> {
-    base: Highlighter<'a>,
+    base: super::Highlighter<'a>,
 }
 
 enum TakeRemaining {
@@ -18,7 +18,7 @@ enum TakeRemaining {
 impl<'a> CommandHighlighter<'a> {
     pub fn new(input: &'a str) -> Self {
         Self {
-            base: Highlighter::new(input),
+            base: super::Highlighter::new(input),
         }
     }
 
@@ -87,7 +87,8 @@ impl<'a> CommandHighlighter<'a> {
                     break;
                 }
             } else {
-                cmd = commands.commands()
+                cmd = commands
+                    .commands()
                     .iter()
                     .find(|cmd| cmd.name == arg.content || cmd.aliases.contains(&arg.content));
 
@@ -101,10 +102,8 @@ impl<'a> CommandHighlighter<'a> {
         }
 
         // Color any remaining input as inactive.
-        if let len = self.base.input.len() - self.base.i
-            && len > 0
-        {
-            self.base.eat_and_color(len).fg(colors::TEXT_INACTIVE);
+        if let Some(span) = self.base.eat_remaining_and_color() {
+            span.fg(colors::TEXT_INACTIVE);
         }
 
         self.base.extract()
