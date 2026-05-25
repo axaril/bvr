@@ -225,12 +225,7 @@ impl App {
                 .map(|last_drawn| now.duration_since(last_drawn) > MIN_REFRESH_DURATION)
                 .unwrap_or(true)
             {
-                self.term.draw(|f| {
-                    let cursor = render(f);
-                    if let Some(cursor) = cursor {
-                        f.set_cursor_position(cursor);
-                    }
-                })?;
+                self.term.draw(render)?;
                 last_drawn = Some(now);
             } else if self.term.mouse_capture {
                 // We render to capture mouse actions
@@ -1160,13 +1155,11 @@ impl Viewer {
         }
     }
 
-    fn ui(
-        &mut self,
-        f: &mut ratatui::Frame,
-        commands: &CommandSystem,
-        handler: &mut MouseHandler,
-    ) -> Option<(u16, u16)> {
-        let [tab_chunk, mut mux_chunk, status_chunk, cmd_chunk] = mux::split_mux(f.area())?;
+    fn ui(&mut self, f: &mut ratatui::Frame, commands: &CommandSystem, handler: &mut MouseHandler) {
+        let Some(chunks) = mux::split_mux(f.area()) else {
+            return;
+        };
+        let [tab_chunk, mut mux_chunk, status_chunk, cmd_chunk] = chunks;
 
         let buf = f.buffer_mut();
         let active_index = self.mux.active_index();
@@ -1295,16 +1288,12 @@ impl Viewer {
             .with_message(self.status.get_message_update().as_deref())
             .render(status_chunk, buf);
 
-        let mut cursor = None;
         prompt::Widget {
             mode: self.mode,
             commands,
             prompt: &mut self.prompt,
-            cursor: &mut cursor,
         }
-        .render(cmd_chunk, buf);
-
-        cursor
+        .render(cmd_chunk, f);
     }
 
     pub fn toggle_gutter(&mut self) {

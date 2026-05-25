@@ -3,7 +3,11 @@ use std::sync::OnceLock;
 use ratatui::{prelude::*, widgets::*};
 
 use crate::{
-    app::{command::CommandSystem, control::{InputMode, PromptMode}, highlight},
+    app::{
+        command::CommandSystem,
+        control::{InputMode, PromptMode},
+        highlight,
+    },
     colors,
     cursor::{Cursor, SelectionOrigin},
 };
@@ -12,11 +16,11 @@ pub struct PromptWidget<'a> {
     pub prompt: &'a mut super::State,
     pub commands: &'a CommandSystem,
     pub mode: InputMode,
-    pub cursor: &'a mut Option<(u16, u16)>,
 }
 
-impl<'a> Widget for PromptWidget<'a> {
-    fn render(self, area: Rect, buf: &mut Buffer) {
+impl<'a> PromptWidget<'a> {
+    pub fn render(self, area: Rect, f: &mut ratatui::Frame) {
+        let buf = f.buffer_mut();
         let InputMode::Prompt(mode) = self.mode else {
             static WIDGET_BLOCK: OnceLock<Block> = OnceLock::new();
             WIDGET_BLOCK
@@ -51,45 +55,34 @@ impl<'a> Widget for PromptWidget<'a> {
         }
         .render(indicator_area, buf);
 
-        // Syntax-highlight the input when editing a regex (not escaped/literal mode).
-        let prompt_line = match mode {
+        let text_spans = match mode {
             PromptMode::Search { escaped: false, .. } => {
-                Line::from(highlight::RegexHighlighter::new(cmd_buf).highlight())
+                highlight::RegexHighlighter::new(cmd_buf).highlight()
             }
             PromptMode::Command => {
-                Line::from(highlight::CommandHighlighter::new(cmd_buf)
-                    .highlight(self.commands))
+                highlight::CommandHighlighter::new(cmd_buf).highlight(self.commands)
             }
-            _ => Line::raw(cmd_buf),
+            _ => vec![Span::raw(cmd_buf)],
         };
-        Paragraph::new(prompt_line)
+
+        let sel_spans = highlight::SelectionHighlighter::new(cmd_buf).highlight(&cursor);
+
+        let prompt_spans = highlight::merge_spans(&text_spans, &sel_spans, Style::patch);
+
+        Paragraph::new(Line::from(prompt_spans))
             .bg(colors::BG)
             .scroll((0, left as u16))
             .render(data_area, buf);
 
-        match cursor {
-            Cursor::Selection(start, end, _) => {
-                let start = start.saturating_sub(left);
-                let end = end.saturating_sub(left);
-                let mut span_area = data_area;
-                span_area.x += start as u16;
-                span_area.width = (end - start) as u16;
-
-                static HIGHLIGHT_BLOCK: OnceLock<Block> = OnceLock::new();
-                HIGHLIGHT_BLOCK
-                    .get_or_init(|| Block::new().bg(colors::COMMAND_BAR_SELECT))
-                    .render(span_area, buf);
-            }
-            _ => {}
-        }
-
         let i = match cursor {
             Cursor::Singleton(i)
             | Cursor::Selection(_, i, SelectionOrigin::Right)
-            | Cursor::Selection(i, _, SelectionOrigin::Left) => {
-                cmd_buf[..i.saturating_sub(left)].chars().count()
-            }
+            | Cursor::Selection(i, _, SelectionOrigin::Left) => cmd_buf
+                .chars()
+                .take(i)
+                .map(|c| c.len_utf8())
+                .sum::<usize>(),
         };
-        *self.cursor = Some((data_area.x + i as u16, data_area.y));
+        f.set_cursor_position((data_area.x + i as u16, data_area.y));
     }
 }

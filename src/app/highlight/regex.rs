@@ -1,10 +1,8 @@
 use crate::colors;
 use ratatui::prelude::*;
 
-use super::Highlighter;
-
 pub struct RegexHighlighter<'a> {
-    base: Highlighter<'a>,
+    base: super::Highlighter<'a>,
 
     // depth: usize,
     in_class: bool,
@@ -17,7 +15,7 @@ pub struct RegexHighlighter<'a> {
 impl<'a> RegexHighlighter<'a> {
     pub fn new(input: &'a str) -> Self {
         Self {
-            base: Highlighter::new(input),
+            base: super::Highlighter::new(input),
             // depth: 0,
             in_class: false,
             lit_start: None,
