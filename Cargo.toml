@@ -52,6 +52,7 @@ unicode-width = "0.2"
 unicode-segmentation = "1.13"
 
 # Shell usage
+globset = "0.4"
 shellexpand = "3.1"
 shlex = "2.0"
 
