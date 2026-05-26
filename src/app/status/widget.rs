@@ -52,7 +52,9 @@ impl<'a> Widget for StatusWidget<'a> {
                     (false, false) => " FILTER ",
                 },
             ),
-            InputMode::Prompt(PromptMode::FilterColor) => (colors::FILTER_ACCENT, " FILTER EDIT COLOR "),
+            InputMode::Prompt(PromptMode::FilterColor) => {
+                (colors::FILTER_ACCENT, " FILTER EDIT COLOR ")
+            }
             InputMode::Normal => (colors::NORMAL_ACCENT, " NORMAL "),
             InputMode::Visual => (colors::SELECT_ACCENT, " VISUAL "),
             InputMode::Filter => (colors::FILTER_ACCENT, " FILTER "),
@@ -90,14 +92,14 @@ impl<'a> Widget for StatusWidget<'a> {
                         Span::raw(format!(" ({:.0}% loaded)", progress * 100f32))
                             .fg(colors::STATUS_BAR_TEXT),
                     );
+                } else {
+                    v.push(Span::raw(" (streaming...)").fg(colors::STATUS_BAR_TEXT));
                 }
             }
         } else {
             v.push(Span::raw(":open [file name]").fg(accent_color));
             v.push(Span::raw(" to view a file").fg(colors::STATUS_BAR_TEXT));
         }
-
-        Line::from(v).style(STATUS_BAR_STYLE).render(area, buf);
 
         if let Some(instance) = self.instance {
             if instance.is_following_output() {
@@ -124,5 +126,7 @@ impl<'a> Widget for StatusWidget<'a> {
             .alignment(Alignment::Right)
             .render(area, buf)
         }
+
+        Line::from(v).style(STATUS_BAR_STYLE).render(area, buf);
     }
 }
