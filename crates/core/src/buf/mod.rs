@@ -154,6 +154,7 @@ impl BufferMap {
 
 impl SegBuffer {
     const SEGMENT_SIZE: u64 = 1 << 20;
+    pub const SEG_COUNT: NonZeroUsize = NonZeroUsize::new(25).unwrap();
 
     pub fn read_file(file: File, seg_count: NonZeroUsize) -> Result<Self> {
         file.try_lock_shared()?;
@@ -173,8 +174,7 @@ impl SegBuffer {
     }
 
     pub fn read_stream(stream: BoxedStream) -> Result<Self> {
-        let (sx, rx) = std::sync::mpsc::channel();
-        let index = LineIndex::read_stream(stream, sx, Self::SEGMENT_SIZE)?;
+        let (index, rx) = LineIndex::read_stream(stream, Self::SEGMENT_SIZE)?;
 
         Ok(Self {
             index,
@@ -190,10 +190,12 @@ impl SegBuffer {
 
     pub fn read_stream_file_backed(stream: BoxedStream, seg_count: NonZeroUsize) -> Result<Self> {
         let file = NamedTempFile::new()?;
-        let output = file.as_file().try_clone()?;
-        let len = Arc::new(AtomicU64::new(0));
-        let index =
-            LineIndex::read_stream_file_backed(stream, output, len.clone(), Self::SEGMENT_SIZE)?;
+        file.as_file().try_lock_shared()?;
+        let (index, len) = LineIndex::read_stream_file_backed(
+            stream,
+            file.as_file().try_clone()?,
+            Self::SEGMENT_SIZE,
+        )?;
 
         Ok(Self {
             index,
@@ -297,6 +299,7 @@ impl SegBuffer {
 
     /// Create a new [ContiguousSegmentIterator] for this [SegBuffer].
     pub fn segment_iter(&self) -> Result<ContiguousSegmentIterator> {
+        const ITER_SEG_COUNT: NonZeroUsize = NonZeroUsize::new(2).unwrap();
         match &self.map.repr {
             BufferRepr::File { file, len, .. } => Ok(ContiguousSegmentIterator::new(
                 self.index.clone(),
@@ -305,7 +308,7 @@ impl SegBuffer {
                     repr: BufferRepr::File {
                         file: file.try_clone()?,
                         len: *len,
-                        inner: RefCell::new(FileInner::new(NonZeroUsize::new(2).unwrap())),
+                        inner: RefCell::new(FileInner::new(ITER_SEG_COUNT)),
                     },
                     segment_size: self.map.segment_size,
                 },
@@ -328,7 +331,7 @@ impl SegBuffer {
                     repr: BufferRepr::File {
                         file: file.as_file().try_clone()?,
                         len: len.load(std::sync::atomic::Ordering::Acquire),
-                        inner: RefCell::new(FileInner::new(NonZeroUsize::new(2).unwrap())),
+                        inner: RefCell::new(FileInner::new(ITER_SEG_COUNT)),
                     },
                     segment_size: self.map.segment_size,
                 },
@@ -584,7 +587,6 @@ mod test {
     use std::{
         fs::File,
         io::{BufReader, Read},
-        num::NonZeroUsize,
     };
 
     use crate::{
@@ -611,8 +613,44 @@ mod test {
     fn file_stream_consistency_base(file: File, line_count: usize) -> Result<()> {
         let stream = BufReader::new(file.try_clone()?);
 
-        let file_index = SegBuffer::read_file(file, NonZeroUsize::new(25).unwrap())?;
+        let file_index = SegBuffer::read_file(file, SegBuffer::SEG_COUNT)?;
         let stream_index = SegBuffer::read_stream(Box::new(stream))?;
+
+        file_index.wait_complete();
+        stream_index.wait_complete();
+
+        assert_eq!(file_index.line_count(), stream_index.line_count());
+        assert_eq!(file_index.line_count(), line_count);
+        for i in 0..file_index.line_count() {
+            assert_eq!(
+                file_index.get_line(i).unwrap().as_str(),
+                stream_index.get_line(i).unwrap().as_str()
+            );
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn file_stream_file_backed_consistency_1() -> Result<()> {
+        file_stream_file_backed_consistency_base(File::open("../../tests/test_10.log")?, 10)
+    }
+
+    #[test]
+    fn file_stream_file_backed_consistency_2() -> Result<()> {
+        file_stream_file_backed_consistency_base(File::open("../../tests/test_50_long.log")?, 50)
+    }
+
+    #[test]
+    fn file_stream_file_backed_consistency_3() -> Result<()> {
+        file_stream_file_backed_consistency_base(File::open("../../tests/test_5000000.log")?, 5_000_000)
+    }
+
+    fn file_stream_file_backed_consistency_base(file: File, line_count: usize) -> Result<()> {
+        let stream = BufReader::new(file.try_clone()?);
+
+        let file_index = SegBuffer::read_file(file, SegBuffer::SEG_COUNT)?;
+        let stream_index = SegBuffer::read_stream_file_backed(Box::new(stream), SegBuffer::SEG_COUNT)?;
 
         file_index.wait_complete();
         stream_index.wait_complete();
@@ -651,7 +689,7 @@ mod test {
         let file_len = file.metadata()?.len();
         let mut reader = BufReader::new(file.try_clone()?);
 
-        let file_buffer = SegBuffer::read_file(file, NonZeroUsize::new(25).unwrap())?;
+        let file_buffer = SegBuffer::read_file(file, SegBuffer::SEG_COUNT)?;
         file_buffer.wait_complete();
         let mut buffers = file_buffer.segment_iter()?;
 

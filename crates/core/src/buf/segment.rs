@@ -9,15 +9,15 @@ use memmap2::{Mmap, MmapMut};
 
 use crate::Result;
 
-pub struct SegmentRaw<Buf> {
+pub struct SegmentBase<Buf> {
     range: Range<u64>,
     data: Buf,
 }
 
-pub type SegmentMut = SegmentRaw<MmapMut>;
-pub type Segment = SegmentRaw<Mmap>;
+pub type SegmentMut = SegmentBase<MmapMut>;
+pub type Segment = SegmentBase<Mmap>;
 
-impl<Buf> SegmentRaw<Buf>
+impl<Buf> SegmentBase<Buf>
 where
     Buf: AsRef<[u8]>,
 {
@@ -42,7 +42,7 @@ where
     }
 }
 
-impl<Buf> std::ops::Deref for SegmentRaw<Buf>
+impl<Buf> std::ops::Deref for SegmentBase<Buf>
 where
     Buf: std::ops::Deref<Target = [u8]>,
 {
@@ -53,7 +53,7 @@ where
     }
 }
 
-impl<Buf> std::ops::DerefMut for SegmentRaw<Buf>
+impl<Buf> std::ops::DerefMut for SegmentBase<Buf>
 where
     Buf: std::ops::DerefMut<Target = [u8]>,
 {
@@ -71,6 +71,8 @@ impl SegmentMut {
                 .len(size as usize)
                 .map_mut(file)?
         };
+        #[cfg(unix)]
+        data.advise(memmap2::Advice::Sequential)?;
         Ok(Self { data, range })
     }
 
@@ -82,11 +84,6 @@ impl SegmentMut {
             data,
             range: start..start + len,
         })
-    }
-
-    pub fn flush(&self) -> Result<()> {
-        self.data.flush()?;
-        Ok(())
     }
 
     pub fn into_read_only(self) -> Result<Segment> {

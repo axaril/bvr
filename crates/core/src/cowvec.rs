@@ -3,7 +3,7 @@ use std::{
     ops::Deref,
     ptr::NonNull,
     sync::{
-        atomic::{AtomicBool, AtomicU32, AtomicUsize, Ordering},
+        atomic::{AtomicBool, AtomicUsize, Ordering},
         Arc, Condvar, Mutex,
     },
 };
@@ -115,6 +115,7 @@ impl<T> Drop for RawBuf<T> {
 /// An exclusive writer to a `CowVec<T>`.
 pub struct CowVecWriter<T> {
     target: Arc<CowVec<T>>,
+    last_notified: usize,
 }
 
 impl<T> CowVecWriter<T>
@@ -161,17 +162,14 @@ where
         self.notify(elems.len());
     }
 
-    fn notify(&self, len: usize) {
-        const NOTIFY_INTERVAL: u32 = 10000;
+    fn notify(&mut self, len: usize) {
+        const NOTIFY_INTERVAL: usize = 1 << 14;
         // Notify readers every NOTIFY_INTERVAL pushes to avoid waking them up too frequently.
-        if self
-            .target
-            .last_notified
-            .fetch_add(len as u32, Ordering::AcqRel)
-            >= NOTIFY_INTERVAL
-        {
+        if self.last_notified + len >= NOTIFY_INTERVAL {
             self.target.condvar.notify_all();
-            self.target.last_notified.store(0, Ordering::Release);
+            self.last_notified = 0;
+        } else {
+            self.last_notified += len;
         }
     }
 
@@ -274,7 +272,6 @@ impl<T> Drop for CowVecWriter<T> {
 pub struct CowVec<T> {
     buf: ArcSwap<RawBuf<T>>,
     completed: AtomicBool,
-    last_notified: AtomicU32,
     /// Used to wake threads blocked in `wait_for_index`.
     condvar: Condvar,
     condvar_lock: Mutex<()>,
@@ -291,11 +288,10 @@ impl<T> CowVec<T> {
         let buf = Arc::new(Self {
             buf,
             completed: AtomicBool::new(false),
-            last_notified: AtomicU32::new(0),
             condvar: Condvar::new(),
             condvar_lock: Mutex::new(()),
         });
-        (buf.clone(), CowVecWriter { target: buf })
+        (buf.clone(), CowVecWriter { target: buf, last_notified: 0 })
     }
 
     /// Constructs a new, empty `CowVec<T>` with at least the specified capacity.
@@ -310,11 +306,10 @@ impl<T> CowVec<T> {
         let buf = Arc::new(Self {
             buf,
             completed: AtomicBool::new(false),
-            last_notified: AtomicU32::new(0),
             condvar: Condvar::new(),
             condvar_lock: Mutex::new(()),
         });
-        (buf.clone(), CowVecWriter { target: buf })
+        (buf.clone(), CowVecWriter { target: buf, last_notified: 0 })
     }
 
     /// Constructs a new, empty `CowVec<T>`.
@@ -415,7 +410,6 @@ impl<T: Copy> From<Vec<T>> for CowVec<T> {
 
         Self {
             buf: ArcSwap::from_pointee(RawBuf::new(NonNull::new(ptr).unwrap(), len, cap)),
-            last_notified: AtomicU32::new(0),
             completed: AtomicBool::new(true), // Vec is already complete, no writer exists
             condvar: Condvar::new(),
             condvar_lock: Mutex::new(()),
