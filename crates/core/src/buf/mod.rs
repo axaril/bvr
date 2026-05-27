@@ -8,7 +8,9 @@ use std::{
     num::NonZeroUsize,
     ops::Range,
     sync::{
-        Arc, atomic::AtomicU64, mpsc::{Receiver, TryRecvError}
+        atomic::AtomicU64,
+        mpsc::{Receiver, TryRecvError},
+        Arc,
     },
 };
 
@@ -42,8 +44,16 @@ struct StreamInner {
     segments: Vec<Arc<Segment>>,
 }
 
-struct FileBackedStreamInner {
+struct FileInner {
     segments: RefCell<LruCache<usize, Arc<Segment>>>,
+}
+
+impl FileInner {
+    fn new(seg_count: NonZeroUsize) -> Self {
+        Self {
+            segments: RefCell::new(LruCache::new(seg_count)),
+        }
+    }
 }
 
 /// Internal representation of the segmented buffer, which allows for working
@@ -54,7 +64,7 @@ enum BufferRepr {
     File {
         file: File,
         len: u64,
-        segments: RefCell<LruCache<usize, Arc<Segment>>>,
+        inner: RefCell<FileInner>,
     },
     /// Data is all present in memory in multiple anonymous mmaps.
     Stream(RefCell<StreamInner>),
@@ -62,7 +72,7 @@ enum BufferRepr {
     FileBackedStream {
         file: NamedTempFile,
         len: Arc<AtomicU64>,
-        inner: RefCell<FileBackedStreamInner>,
+        inner: RefCell<FileInner>,
     },
 }
 
@@ -80,21 +90,19 @@ impl BufferMap {
 
     fn fetch(&self, seg_id: usize) -> Option<Arc<Segment>> {
         match &self.repr {
-            BufferRepr::File {
-                file,
-                len,
-                segments,
-            } => {
+            BufferRepr::File { file, len, inner } => {
+                let FileInner { segments } = &mut *inner.borrow_mut();
+
                 let range = self.data_range_of_id(seg_id);
                 let range = range.start..range.end.min(*len);
-                Some(
-                    segments
-                        .borrow_mut()
-                        .get_or_insert(seg_id, || {
-                            Arc::new(Segment::map_file(range, file).expect("mmap was successful"))
-                        })
-                        .clone(),
-                )
+
+                let segment = segments
+                    .borrow_mut()
+                    .get_or_insert(seg_id, || {
+                        Arc::new(Segment::map_file(range, file).expect("mmap was successful"))
+                    })
+                    .clone();
+                Some(segment)
             }
             BufferRepr::Stream(inner) => {
                 let StreamInner {
@@ -122,7 +130,7 @@ impl BufferMap {
                 segments.get(seg_id).cloned()
             }
             BufferRepr::FileBackedStream { file, len, inner } => {
-                let FileBackedStreamInner { segments } = &mut *inner.borrow_mut();
+                let FileInner { segments } = &mut *inner.borrow_mut();
 
                 let len = len.load(std::sync::atomic::Ordering::Acquire);
 
@@ -157,7 +165,7 @@ impl SegBuffer {
                 repr: BufferRepr::File {
                     len: file.metadata()?.len(),
                     file,
-                    segments: RefCell::new(LruCache::new(seg_count)),
+                    inner: RefCell::new(FileInner::new(seg_count)),
                 },
                 segment_size: Self::SEGMENT_SIZE,
             },
@@ -184,7 +192,8 @@ impl SegBuffer {
         let file = NamedTempFile::new()?;
         let output = file.as_file().try_clone()?;
         let len = Arc::new(AtomicU64::new(0));
-        let index = LineIndex::read_stream_file_backed(stream, output, len.clone(), Self::SEGMENT_SIZE)?;
+        let index =
+            LineIndex::read_stream_file_backed(stream, output, len.clone(), Self::SEGMENT_SIZE)?;
 
         Ok(Self {
             index,
@@ -192,7 +201,7 @@ impl SegBuffer {
                 repr: BufferRepr::FileBackedStream {
                     file,
                     len,
-                    inner: RefCell::new(FileBackedStreamInner {
+                    inner: RefCell::new(FileInner {
                         segments: RefCell::new(LruCache::new(seg_count)),
                     }),
                 },
@@ -296,7 +305,7 @@ impl SegBuffer {
                     repr: BufferRepr::File {
                         file: file.try_clone()?,
                         len: *len,
-                        segments: RefCell::new(LruCache::new(NonZeroUsize::new(2).unwrap())),
+                        inner: RefCell::new(FileInner::new(NonZeroUsize::new(2).unwrap())),
                     },
                     segment_size: self.map.segment_size,
                 },
@@ -312,9 +321,18 @@ impl SegBuffer {
                     segment_size: self.map.segment_size,
                 },
             )),
-            BufferRepr::FileBackedStream { file, len, inner } => {
-                unimplemented!()
-            }
+            BufferRepr::FileBackedStream { file, len, .. } => Ok(ContiguousSegmentIterator::new(
+                self.index.clone(),
+                0..usize::MAX,
+                BufferMap {
+                    repr: BufferRepr::File {
+                        file: file.as_file().try_clone()?,
+                        len: len.load(std::sync::atomic::Ordering::Acquire),
+                        inner: RefCell::new(FileInner::new(NonZeroUsize::new(2).unwrap())),
+                    },
+                    segment_size: self.map.segment_size,
+                },
+            )),
         }
     }
 
@@ -354,7 +372,10 @@ impl SegBuffer {
                     }
                 }
                 BufferRepr::FileBackedStream { file, .. } => {
-                    unimplemented!()
+                    let mut file = file.as_file().try_clone()?;
+                    file.seek(std::io::SeekFrom::Start(0))?;
+                    let mut output = output;
+                    std::io::copy(&mut file, &mut output)?;
                 }
             },
         }
@@ -388,7 +409,8 @@ impl SegBuffer {
                     }
                 }
                 BufferRepr::FileBackedStream { file, .. } => {
-                    unimplemented!()
+                    file.as_file().seek(std::io::SeekFrom::Start(0))?;
+                    file.as_file().read_to_string(output)?;
                 }
             },
         }

@@ -1,7 +1,9 @@
 use std::{
     fs::File,
     sync::{
-        Arc, atomic::{AtomicU32, AtomicU64}, mpsc::{Receiver, Sender}
+        atomic::{AtomicU32, AtomicU64},
+        mpsc::Sender,
+        Arc,
     },
     thread::JoinHandle,
 };
@@ -12,33 +14,65 @@ use crate::{
     err::{Error, Result},
 };
 
-struct IndexingTask {
-    /// This is the sender side of the channel that receives byte indexes of `\n`.
-    sx: Sender<(usize, Vec<IndexType>)>,
-    segment: Segment,
+trait IndexableSegment {
+    fn start(&self) -> u64;
+    fn as_slice(&self) -> &[u8];
 }
 
-impl IndexingTask {
-    #[inline]
-    fn new(file: &File, start: u64, end: u64) -> Result<(Self, Receiver<(usize, Vec<IndexType>)>)> {
-        let segment = Segment::map_file(start..end, file)?;
-        let (sx, rx) = std::sync::mpsc::channel();
-        Ok((Self { sx, segment }, rx))
+impl IndexableSegment for &Segment {
+    fn start(&self) -> u64 {
+        Segment::start(self)
     }
 
-    fn compute(self) -> Result<()> {
+    fn as_slice(&self) -> &[u8] {
+        self
+    }
+}
+
+impl IndexableSegment for &mut SegmentMut {
+    fn start(&self) -> u64 {
+        SegmentMut::start(self)
+    }
+
+    fn as_slice(&self) -> &[u8] {
+        self
+    }
+}
+
+struct IndexingTask<T> {
+    segment: T,
+}
+
+impl<'a> IndexingTask<&'a Segment> {
+    fn new_ref(segment: &'a Segment) -> Self {
+        Self { segment }
+    }
+}
+
+impl<'a> IndexingTask<&'a mut SegmentMut> {
+    fn new_mut(segment: &'a mut SegmentMut) -> Self {
+        Self { segment }
+    }
+}
+
+impl<T> IndexingTask<T>
+where
+    T: IndexableSegment,
+{
+    fn compute(
+        self,
+        mut send_action: impl FnMut(usize, Vec<IndexType>) -> Result<()>,
+    ) -> Result<()> {
         let mut curr_upper = 0;
         let mut lowers = Vec::new();
-        for i in memchr::memchr_iter(b'\n', &self.segment) {
+        for i in memchr::memchr_iter(b'\n', self.segment.as_slice()) {
             let line_data = self.segment.start() + i as u64 + 1;
             let upper = (line_data >> IndexType::BITS) as usize;
             let lower = line_data as IndexType;
 
             if upper > curr_upper {
                 if !lowers.is_empty() {
-                    self.sx
-                        .send((curr_upper, std::mem::take(&mut lowers)))
-                        .map_err(|_| Error::Internal)?;
+                    (send_action)(curr_upper, std::mem::take(&mut lowers))?;
                 }
 
                 curr_upper = upper;
@@ -48,9 +82,7 @@ impl IndexingTask {
         }
 
         if !lowers.is_empty() {
-            self.sx
-                .send((curr_upper, lowers))
-                .map_err(|_| Error::Internal)?;
+            (send_action)(curr_upper, lowers)?;
         }
 
         Ok(())
@@ -129,10 +161,17 @@ impl LineIndexWriter {
 
                 while curr < len {
                     let end = (curr + segment_size).min(len);
-                    let (task, task_rx) = IndexingTask::new(&file, curr, end)?;
+
+                    let segment = Segment::map_file(curr..end, &file)?;
+
+                    let (task_sx, task_rx) = std::sync::mpsc::channel();
                     sx.send(task_rx).map_err(|_| Error::Internal)?;
 
-                    std::thread::spawn(|| task.compute());
+                    std::thread::spawn(move || {
+                        IndexingTask::new_ref(&segment).compute(move |upper, lowers| {
+                            task_sx.send((upper, lowers)).map_err(|_| Error::Internal)
+                        })
+                    });
 
                     curr = end;
 
@@ -149,17 +188,22 @@ impl LineIndexWriter {
             }
 
             while let Ok((upper, lowers)) = task_rx.recv() {
-                if upper > self.curr_upper {
-                    self.upper.push((self.lower.len(), upper));
-                    self.curr_upper = upper;
-                }
-                self.lower.extend_from_slice(&lowers);
+                self.extend_from_slice(upper, &lowers)?;
             }
         }
 
         spawner.join().map_err(|_| Error::Internal)??;
         self.push(len);
 
+        Ok(())
+    }
+
+    fn extend_from_slice(&mut self, upper: usize, lowers: &[IndexType]) -> Result<()> {
+        if upper > self.curr_upper {
+            self.upper.push((self.lower.len(), upper));
+            self.curr_upper = upper;
+        }
+        self.lower.extend_from_slice(&lowers);
         Ok(())
     }
 
@@ -210,14 +254,8 @@ impl LineIndexWriter {
                 .send(segment.clone())
                 .map_err(|_| Error::Internal)?;
 
-            for i in memchr::memchr_iter(b'\n', &segment) {
-                let line_data = len + i as u64;
-                self.push(line_data + 1);
-            }
-
-            if buf_len == 0 {
-                break;
-            }
+            IndexingTask::new_ref(&segment)
+                .compute(|upper, lowers: Vec<IndexType>| self.extend_from_slice(upper, &lowers))?;
 
             len += buf_len as u64;
         }
@@ -259,17 +297,11 @@ impl LineIndexWriter {
                 break;
             }
 
-            for i in memchr::memchr_iter(b'\n', &segment) {
-                let line_data = len + i as u64;
-                self.push(line_data + 1);
-            }
+            IndexingTask::new_mut(&mut segment)
+                .compute(|upper, lowers: Vec<IndexType>| self.extend_from_slice(upper, &lowers))?;
 
             segment.flush()?;
             drop(segment);
-
-            if buf_len == 0 {
-                break;
-            }
 
             len += buf_len as u64;
 
@@ -355,7 +387,9 @@ impl LineIndex {
         segment_size: u64,
     ) -> Result<Self> {
         let (index, writer) = Self::new(ProgressReport::PERCENT);
-        std::thread::spawn(move || writer.index_stream_file_backed(stream, readable_len, file, segment_size));
+        std::thread::spawn(move || {
+            writer.index_stream_file_backed(stream, readable_len, file, segment_size)
+        });
         Ok(index)
     }
 
