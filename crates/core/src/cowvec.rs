@@ -458,7 +458,7 @@ impl<T> Deref for CowVecSnapshot<T> {
 }
 
 #[cfg(test)]
-mod test {
+mod tests {
     use super::CowVec;
     use std::sync::{Arc, Barrier};
     use std::time::Duration;

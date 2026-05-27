@@ -41,7 +41,6 @@ use std::{
     borrow::Cow,
     collections::VecDeque,
     fs::OpenOptions,
-    num::NonZeroUsize,
     path::{Path, PathBuf},
     time::{Duration, Instant},
 };

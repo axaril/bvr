@@ -582,7 +582,7 @@ impl ContiguousSegmentIterator {
 }
 
 #[cfg(test)]
-mod test {
+mod tests {
     use anyhow::Result;
     use std::{
         fs::File,
