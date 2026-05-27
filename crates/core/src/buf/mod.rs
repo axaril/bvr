@@ -8,12 +8,12 @@ use std::{
     num::NonZeroUsize,
     ops::Range,
     sync::{
-        mpsc::{Receiver, TryRecvError},
-        Arc,
+        Arc, atomic::AtomicU64, mpsc::{Receiver, TryRecvError}
     },
 };
 
 use lru::LruCache;
+use tempfile::NamedTempFile;
 
 use crate::{index::BoxedStream, LineIndex, LineSet, Result};
 
@@ -42,6 +42,10 @@ struct StreamInner {
     segments: Vec<Arc<Segment>>,
 }
 
+struct FileBackedStreamInner {
+    segments: RefCell<LruCache<usize, Arc<Segment>>>,
+}
+
 /// Internal representation of the segmented buffer, which allows for working
 /// with both files and streams of data. All segments are assumed to have
 /// the same size with the exception of the last segment.
@@ -54,6 +58,12 @@ enum BufferRepr {
     },
     /// Data is all present in memory in multiple anonymous mmaps.
     Stream(RefCell<StreamInner>),
+    /// Data is all present in memory in multiple anonymous mmaps.
+    FileBackedStream {
+        file: NamedTempFile,
+        len: Arc<AtomicU64>,
+        inner: RefCell<FileBackedStreamInner>,
+    },
 }
 
 impl BufferMap {
@@ -111,6 +121,25 @@ impl BufferMap {
                 }
                 segments.get(seg_id).cloned()
             }
+            BufferRepr::FileBackedStream { file, len, inner } => {
+                let FileBackedStreamInner { segments } = &mut *inner.borrow_mut();
+
+                let len = len.load(std::sync::atomic::Ordering::Acquire);
+
+                let range = self.data_range_of_id(seg_id);
+                if range.start >= len {
+                    return None;
+                }
+                let range = range.start..range.end.min(len);
+
+                let segment = segments
+                    .borrow_mut()
+                    .get_or_insert(seg_id, || {
+                        Arc::new(Segment::map_file(range, file).expect("mmap was successful"))
+                    })
+                    .clone();
+                Some(segment)
+            }
         }
     }
 }
@@ -146,6 +175,27 @@ impl SegBuffer {
                     segment_rx: Some(rx),
                     segments: Vec::new(),
                 })),
+                segment_size: Self::SEGMENT_SIZE,
+            },
+        })
+    }
+
+    pub fn read_stream_file_backed(stream: BoxedStream, seg_count: NonZeroUsize) -> Result<Self> {
+        let file = NamedTempFile::new()?;
+        let output = file.as_file().try_clone()?;
+        let len = Arc::new(AtomicU64::new(0));
+        let index = LineIndex::read_stream_file_backed(stream, output, len.clone(), Self::SEGMENT_SIZE)?;
+
+        Ok(Self {
+            index,
+            map: BufferMap {
+                repr: BufferRepr::FileBackedStream {
+                    file,
+                    len,
+                    inner: RefCell::new(FileBackedStreamInner {
+                        segments: RefCell::new(LruCache::new(seg_count)),
+                    }),
+                },
                 segment_size: Self::SEGMENT_SIZE,
             },
         })
@@ -262,6 +312,9 @@ impl SegBuffer {
                     segment_size: self.map.segment_size,
                 },
             )),
+            BufferRepr::FileBackedStream { file, len, inner } => {
+                unimplemented!()
+            }
         }
     }
 
@@ -300,6 +353,9 @@ impl SegBuffer {
                         writer.write_all(seg)?;
                     }
                 }
+                BufferRepr::FileBackedStream { file, .. } => {
+                    unimplemented!()
+                }
             },
         }
 
@@ -330,6 +386,9 @@ impl SegBuffer {
                         let mut reader = Cursor::new(&seg[..]);
                         reader.read_to_string(output)?;
                     }
+                }
+                BufferRepr::FileBackedStream { file, .. } => {
+                    unimplemented!()
                 }
             },
         }

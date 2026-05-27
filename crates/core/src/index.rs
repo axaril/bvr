@@ -1,9 +1,7 @@
 use std::{
     fs::File,
     sync::{
-        atomic::AtomicU32,
-        mpsc::{Receiver, Sender},
-        Arc,
+        Arc, atomic::{AtomicU32, AtomicU64}, mpsc::{Receiver, Sender}
     },
     thread::JoinHandle,
 };
@@ -227,6 +225,67 @@ impl LineIndexWriter {
         self.push(len);
         Ok(())
     }
+
+    pub fn index_stream_file_backed(
+        mut self,
+        mut stream: BoxedStream,
+        readable_len: Arc<AtomicU64>,
+        file: File,
+        segment_size: u64,
+    ) -> Result<()> {
+        let mut len = 0;
+
+        file.set_len(0)?;
+
+        self.lower.push(0);
+
+        loop {
+            file.set_len(len + segment_size)?;
+            let mut segment = SegmentMut::map_file(len..len + segment_size, &file)?;
+
+            let mut buf_len = 0;
+            loop {
+                let remaining = &mut segment[buf_len..];
+                if remaining.is_empty() {
+                    break;
+                }
+                match stream.read(remaining)? {
+                    0 => break,
+                    l => buf_len += l,
+                }
+            }
+
+            if buf_len == 0 {
+                break;
+            }
+
+            for i in memchr::memchr_iter(b'\n', &segment) {
+                let line_data = len + i as u64;
+                self.push(line_data + 1);
+            }
+
+            segment.flush()?;
+            drop(segment);
+
+            if buf_len == 0 {
+                break;
+            }
+
+            len += buf_len as u64;
+
+            readable_len.store(len, std::sync::atomic::Ordering::Release);
+        }
+
+        self.push(len);
+
+        readable_len.store(len, std::sync::atomic::Ordering::Release);
+
+        // Truncate the file to the actual length and sync it to disk.
+        file.set_len(len)?;
+        file.sync_all()?;
+
+        Ok(())
+    }
 }
 
 impl Drop for LineIndexWriter {
@@ -286,6 +345,17 @@ impl LineIndex {
     ) -> Result<Self> {
         let (index, writer) = Self::new(ProgressReport::NONE);
         std::thread::spawn(move || writer.index_stream(stream, outgoing, segment_size));
+        Ok(index)
+    }
+
+    pub fn read_stream_file_backed(
+        stream: BoxedStream,
+        file: File,
+        readable_len: Arc<AtomicU64>,
+        segment_size: u64,
+    ) -> Result<Self> {
+        let (index, writer) = Self::new(ProgressReport::PERCENT);
+        std::thread::spawn(move || writer.index_stream_file_backed(stream, readable_len, file, segment_size));
         Ok(index)
     }
 

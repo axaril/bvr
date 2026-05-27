@@ -63,6 +63,17 @@ where
 }
 
 impl SegmentMut {
+    pub(crate) fn map_file<F: Mmappable>(range: Range<u64>, file: &F) -> Result<Self> {
+        let size = range.end - range.start;
+        let data = unsafe {
+            memmap2::MmapOptions::new()
+                .offset(range.start)
+                .len(size as usize)
+                .map_mut(file)?
+        };
+        Ok(Self { data, range })
+    }
+
     pub(crate) fn new(start: u64, len: u64) -> Result<Self> {
         let data = memmap2::MmapOptions::new().len(len as usize).map_anon()?;
         #[cfg(unix)]
@@ -71,6 +82,11 @@ impl SegmentMut {
             data,
             range: start..start + len,
         })
+    }
+
+    pub fn flush(&self) -> Result<()> {
+        self.data.flush()?;
+        Ok(())
     }
 
     pub fn into_read_only(self) -> Result<Segment> {
