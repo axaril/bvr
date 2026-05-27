@@ -1084,7 +1084,7 @@ impl Viewer {
             self.push_instance(
                 path.to_string_lossy().into_owned(),
                 None,
-                SegBuffer::read_stream(Box::new(reader), false)?,
+                SegBuffer::read_stream(Box::new(reader))?,
             );
             return Ok(());
         }
@@ -1104,7 +1104,7 @@ impl Viewer {
         self.push_instance(
             name,
             link,
-            SegBuffer::read_file(file, NonZeroUsize::new(25).unwrap(), false)?,
+            SegBuffer::read_file(file, NonZeroUsize::new(25).unwrap())?,
         );
 
         if load_filters {
@@ -1136,7 +1136,7 @@ impl Viewer {
     }
 
     pub fn open_stream(&mut self, name: String, stream: BoxedStream) -> Result<()> {
-        self.push_instance(name, None, SegBuffer::read_stream(stream, false)?);
+        self.push_instance(name, None, SegBuffer::read_stream(stream)?);
         Ok(())
     }
 

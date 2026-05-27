@@ -118,9 +118,9 @@ impl BufferMap {
 impl SegBuffer {
     const SEGMENT_SIZE: u64 = 1 << 20;
 
-    pub fn read_file(file: File, seg_count: NonZeroUsize, complete: bool) -> Result<Self> {
+    pub fn read_file(file: File, seg_count: NonZeroUsize) -> Result<Self> {
         file.try_lock_shared()?;
-        let index = LineIndex::read_file(file.try_clone()?, complete, Self::SEGMENT_SIZE)?;
+        let index = LineIndex::read_file(file.try_clone()?, Self::SEGMENT_SIZE)?;
 
         Ok(Self {
             index,
@@ -135,9 +135,9 @@ impl SegBuffer {
         })
     }
 
-    pub fn read_stream(stream: BoxedStream, complete: bool) -> Result<Self> {
+    pub fn read_stream(stream: BoxedStream) -> Result<Self> {
         let (sx, rx) = std::sync::mpsc::channel();
-        let index = LineIndex::read_stream(stream, sx, complete, Self::SEGMENT_SIZE)?;
+        let index = LineIndex::read_stream(stream, sx, Self::SEGMENT_SIZE)?;
 
         Ok(Self {
             index,
@@ -149,6 +149,10 @@ impl SegBuffer {
                 segment_size: Self::SEGMENT_SIZE,
             },
         })
+    }
+
+    pub fn wait_complete(&self) {
+        self.index.wait_complete()
     }
 
     #[cfg(test)]
@@ -526,8 +530,11 @@ mod test {
     fn file_stream_consistency_base(file: File, line_count: usize) -> Result<()> {
         let stream = BufReader::new(file.try_clone()?);
 
-        let file_index = SegBuffer::read_file(file, NonZeroUsize::new(25).unwrap(), true)?;
-        let stream_index = SegBuffer::read_stream(Box::new(stream), true)?;
+        let file_index = SegBuffer::read_file(file, NonZeroUsize::new(25).unwrap())?;
+        let stream_index = SegBuffer::read_stream(Box::new(stream))?;
+
+        file_index.wait_complete();
+        stream_index.wait_complete();
 
         assert_eq!(file_index.line_count(), stream_index.line_count());
         assert_eq!(file_index.line_count(), line_count);
@@ -563,7 +570,8 @@ mod test {
         let file_len = file.metadata()?.len();
         let mut reader = BufReader::new(file.try_clone()?);
 
-        let file_buffer = SegBuffer::read_file(file, NonZeroUsize::new(25).unwrap(), true)?;
+        let file_buffer = SegBuffer::read_file(file, NonZeroUsize::new(25).unwrap())?;
+        file_buffer.wait_complete();
         let mut buffers = file_buffer.segment_iter()?;
 
         let mut total_bytes = 0;

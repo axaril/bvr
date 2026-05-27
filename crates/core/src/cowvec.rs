@@ -340,6 +340,10 @@ impl<T> CowVec<T> {
         );
     }
 
+    pub fn wait_complete(&self) {
+        self.wait_for_index(usize::MAX)
+    }
+
     #[inline(always)]
     fn read<F, R>(&self, cb: F) -> R
     where

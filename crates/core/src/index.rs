@@ -273,31 +273,24 @@ impl LineIndex {
         )
     }
 
-    pub fn read_file(file: File, complete: bool, segment_size: u64) -> Result<Self> {
+    pub fn read_file(file: File, segment_size: u64) -> Result<Self> {
         let (index, writer) = Self::new(ProgressReport::PERCENT);
-        let task = move || writer.index_file(file, segment_size);
-        if complete {
-            task()?;
-        } else {
-            std::thread::spawn(task);
-        }
+        std::thread::spawn(move || writer.index_file(file, segment_size));
         Ok(index)
     }
 
     pub fn read_stream(
         stream: BoxedStream,
         outgoing: Sender<Arc<Segment>>,
-        block_until_complete: bool,
         segment_size: u64,
     ) -> Result<Self> {
         let (index, writer) = Self::new(ProgressReport::NONE);
-        let task = move || writer.index_stream(stream, outgoing, segment_size);
-        if block_until_complete {
-            task()?;
-        } else {
-            std::thread::spawn(task);
-        }
+        std::thread::spawn(move || writer.index_stream(stream, outgoing, segment_size));
         Ok(index)
+    }
+
+    pub fn wait_complete(&self) {
+        self.lower.wait_complete()
     }
 
     pub fn report(&self) -> &ProgressReport {
