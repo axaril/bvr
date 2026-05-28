@@ -34,21 +34,46 @@ impl<'a> HelpWidget<'a> {
         max_command_width: &mut usize,
     ) {
         for cmd in commands {
-            let mut spans = Vec::new();
+            {
+                let mut spans = Vec::with_capacity(4);
 
-            spans.push(Span::raw("   ".repeat(level)));
-            spans.push(Span::raw(cmd.name).fg(crate::colors::COMMAND_ACCENT));
+                if level == 0 {
+                    spans.push(Span::raw(":").fg(crate::colors::COMMAND_ACCENT));
+                } else {
+                    for _ in 0..level {
+                        spans.push(Span::raw("    "));
+                    }
+                }
+                spans.push(Span::raw(cmd.name).fg(crate::colors::COMMAND_ACCENT));
 
-            if !cmd.arguments.is_empty() {
-                spans.push(Span::raw(" "));
-                spans.push(Span::raw(cmd.arguments).fg(crate::colors::TEXT_INACTIVE));
+                if !cmd.arguments.is_empty() {
+                    spans.push(Span::raw(" "));
+                    spans.push(Span::raw(cmd.arguments).fg(crate::colors::TEXT_INACTIVE));
+                }
+
+                let line = Line::from(spans);
+                *max_command_width = (*max_command_width).max(line.width());
+                command_lines.push(line);
             }
 
-            let line = Line::from(spans);
-            *max_command_width = (*max_command_width).max(line.width());
-            command_lines.push(line);
+            {
+                let mut spans = Vec::with_capacity(4 + 2 * cmd.aliases.len());
 
-            description_lines.push(Line::from(Span::raw(cmd.description)));
+                spans.push(Span::raw(cmd.description));
+
+                if !cmd.aliases.is_empty() {
+                    spans.push(Span::raw(" (alias: ").fg(crate::colors::TEXT_INACTIVE));
+                    for (i, &alias) in cmd.aliases.iter().enumerate() {
+                        if i > 0 {
+                            spans.push(Span::raw(", ").fg(crate::colors::TEXT_INACTIVE));
+                        }
+                        spans.push(Span::raw(alias).fg(crate::colors::COMMAND_ACCENT));
+                    }
+                    spans.push(Span::raw(")").fg(crate::colors::TEXT_INACTIVE));
+                }
+
+                description_lines.push(Line::from(spans));
+            }
 
             Self::walk_commands(
                 command_lines,

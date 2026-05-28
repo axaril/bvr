@@ -17,7 +17,7 @@ use ratatui::prelude::Color;
 
 pub struct Instance {
     name: String,
-    link: Option<PathBuf>,
+    origin_path: Option<PathBuf>,
     buf: SegBuffer,
     cursor: CursorState,
     compositor: filters::State,
@@ -25,11 +25,11 @@ pub struct Instance {
 }
 
 impl Instance {
-    pub fn new(name: String, link: Option<PathBuf>, buf: SegBuffer) -> Self {
+    pub fn new(name: String, origin_path: Option<PathBuf>, buf: SegBuffer) -> Self {
         let mut compositor = filters::State::new(&buf);
         let composite = compositor.create_composite();
         Self {
-            link,
+            origin_path,
             view: VirtualView::new(composite),
             compositor: filters::State::new(&buf),
             name,
@@ -333,8 +333,8 @@ impl Instance {
         self.invalidate_cache();
     }
 
-    pub fn link(&self) -> Option<&Path> {
-        self.link.as_deref()
+    pub fn origin_path(&self) -> Option<&Path> {
+        self.origin_path.as_deref()
     }
 
     pub(crate) fn set_selected_filter_color(&mut self, color: Color) {

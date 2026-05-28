@@ -80,50 +80,55 @@ impl App {
             .aliases(&["h", "?"])
             .description("Display all commands.")
             .bind(Self::command_help),
-        Command::new("quit")
-            .aliases(&["q"])
-            .description("Quit the application.")
-            .bind(Self::command_quit),
-        Command::new("mcap")
-            .description("Toggle mouse capture.")
-            .bind(Self::command_mcap),
-        Command::new("persist")
-            .aliases(&["p"])
-            .args("<path>")
-            .description("Persist the current view to a file.")
-            .bind(Self::command_persist),
-        Command::new("realpath")
-            .aliases(&["rp", "readlink", "rl"])
-            .description("Copy the path of the current file to the clipboard if applicable.")
-            .bind(Self::command_realpath),
-        Command::new("pbcopy")
-            .aliases(&["pb"])
-            .description("Copy the content of the current view to the clipboard.")
-            .bind(Self::command_pbcopy),
-        Command::new("refresh")
-            .description("Refresh the screen.")
-            .bind(Self::command_refresh),
         Command::new("open")
             .aliases(&["o"])
             .args("<path>")
             .description("Open a file in a new tab/view.")
             .bind(Self::command_open),
-        Command::new("export")
-            .args("<path>")
-            .description("Export the content of the current view to a file.")
-            .bind(Self::command_export),
         Command::new("close")
             .aliases(&["c"])
             .description("Close the current tab/view.")
             .bind(Self::command_close),
-        Command::new("gutter")
-            .aliases(&["g"])
-            .description("Toggle the gutter line numbers.")
-            .bind(Self::command_gutter),
-        Command::new("mux")
-            .aliases(&["m"])
-            .description("Toggle the multiplexer mode between windows or tabs.")
+        Command::new("quit")
+            .aliases(&["q"])
+            .description("Quit the application.")
+            .bind(Self::command_quit),
+        Command::new("file")
+            .description("Commands related to the current file.")
             .subcommands(&[
+                Command::new("persist")
+                    .aliases(&["p"])
+                    .args("<path>")
+                    .description(
+                        "Persist the current view's temporary file the path if applicable.",
+                    )
+                    .bind(Self::command_persist),
+                Command::new("realpath")
+                    .aliases(&["rp", "readlink", "rl"])
+                    .description(
+                        "Copy the current view's original path to the clipboard if applicable.",
+                    )
+                    .bind(Self::command_realpath),
+            ]),
+        Command::new("view")
+            .aliases(&["v"])
+            .description("Commands related to the current view.")
+            .subcommands(&[
+                Command::new("refresh")
+                    .description("Refresh the screen.")
+                    .bind(Self::command_refresh),
+                Command::new("pbcopy")
+                    .aliases(&["pb"])
+                    .description("Copy the content of the current view to the clipboard.")
+                    .bind(Self::command_pbcopy),
+                Command::new("export")
+                    .args("<path>")
+                    .description("Export the content of the current view to a file.")
+                    .bind(Self::command_export),
+                Command::new("toggle")
+                    .aliases(&["m"])
+                    .description("Toggle the multiplexer mode between windows or tabs.")
+                    .bind(Self::command_mux),
                 Command::new("tabs")
                     .aliases(&["t", "none"])
                     .description("Set the multiplexer to tabs mode.")
@@ -135,7 +140,7 @@ impl App {
             ])
             .bind(Self::command_mux),
         Command::new("filter")
-            .aliases(&["f", "find"])
+            .aliases(&["f", "filters"])
             .description("Commands for managing filters.")
             .subcommands(&[
                 Command::new("link")
@@ -170,6 +175,19 @@ impl App {
                     .aliases(&["i"])
                     .description("Intersect the selected filter sets into the current view.")
                     .bind(Self::command_filter_intersect),
+            ]),
+        Command::new("display")
+            .aliases(&["d"])
+            .description("Commands related to the display.")
+            .subcommands(&[
+                Command::new("mousecapture")
+                    .aliases(&["mcap"])
+                    .description("Toggle mouse capture.")
+                    .bind(Self::command_mcap),
+                Command::new("gutter")
+                    .aliases(&["g"])
+                    .description("Toggle the gutter line numbers.")
+                    .bind(Self::command_gutter),
             ]),
     ];
 
@@ -777,23 +795,22 @@ impl App {
             if let Err(err) = instance.buf_mut().persist(&path) {
                 self.app.viewer.status.msg(format!("persist: {err}"));
             } else {
-                self.app.viewer.status.msg(format!("persist: persisted current view to {}", path.display()));
+                self.app.viewer.status.msg(format!(
+                    "persist: persisted current view to {}",
+                    path.display()
+                ));
             }
         }
     }
 
     fn command_realpath(&mut self, _: &[&str]) {
         if let Some(instance) = self.app.viewer.mux.active_mut() {
-            if let Some(link) = instance.link() {
-                let link = link.display();
-                self.app.viewer.status.msg(format!("readlink: {}", link));
-                crossterm::execute!(
-                    self.term.backend_mut(),
-                    CopyToClipboard::to_clipboard_from(link.to_string())
-                )
-                .ok();
+            if let Some(origin_path) = instance.origin_path().map(PathBuf::from) {
+                let link = origin_path.display();
+                self.app.viewer.status.msg(format!("realpath: {}", link));
+                self.pbcopy(&link.to_string()).ok();
             } else {
-                self.app.viewer.status.msg("readlink: no link".to_string());
+                self.app.viewer.status.msg("readpath: no link".to_string());
             }
         } else {
             self.app
