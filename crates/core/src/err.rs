@@ -14,6 +14,9 @@ pub enum Error {
     #[error("internal error")]
     Internal,
 
+    #[error("operation not supported when input is already persisted")]
+    AlreadyPersisted,
+
     #[error("operation not supported when input is in-progress")]
     InProgress,
 

@@ -87,6 +87,11 @@ impl App {
         Command::new("mcap")
             .description("Toggle mouse capture.")
             .bind(Self::command_mcap),
+        Command::new("persist")
+            .aliases(&["p"])
+            .args("<path>")
+            .description("Persist the current view to a file.")
+            .bind(Self::command_persist),
         Command::new("realpath")
             .aliases(&["rp", "readlink", "rl"])
             .description("Copy the path of the current file to the clipboard if applicable.")
@@ -756,6 +761,23 @@ impl App {
                     .viewer
                     .status
                     .msg("mouse capture toggle failed".to_string());
+            }
+        }
+    }
+
+    fn command_persist(&mut self, args: &[&str]) {
+        if args.len() != 1 {
+            self.app.viewer.status.msg("usage: open <path>".to_string());
+            return;
+        }
+
+        let path = args.into_iter().collect::<PathBuf>();
+
+        if let Some(instance) = self.app.viewer.mux.active_mut() {
+            if let Err(err) = instance.buf_mut().persist(&path) {
+                self.app.viewer.status.msg(format!("persist: {err}"));
+            } else {
+                self.app.viewer.status.msg(format!("persist: persisted current view to {}", path.display()));
             }
         }
     }

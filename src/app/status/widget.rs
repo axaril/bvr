@@ -77,7 +77,7 @@ impl<'a> Widget for StatusWidget<'a> {
         if let Some(message) = self.message {
             v.push(Span::raw(message));
         } else if let Some(instance) = self.instance {
-            let ln_cnt = instance.file().line_count();
+            let ln_cnt = instance.buf().line_count();
             let ln_vis = instance.visible_line_count();
             v.push(Span::raw(format!("{} lines", ln_cnt)).fg(accent_color));
             if ln_vis < ln_cnt {
@@ -85,7 +85,7 @@ impl<'a> Widget for StatusWidget<'a> {
             }
             v.push(Span::raw(" │ ").fg(accent_color));
             v.push(Span::raw(instance.name()).fg(accent_color));
-            let index = instance.file().index();
+            let index = instance.buf().index();
             if !index.is_complete() {
                 if let Some(progress) = index.report().progress() {
                     v.push(

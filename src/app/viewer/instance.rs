@@ -38,8 +38,12 @@ impl Instance {
         }
     }
 
-    pub fn file(&self) -> &SegBuffer {
+    pub fn buf(&self) -> &SegBuffer {
         &self.buf
+    }
+
+    pub fn buf_mut(&mut self) -> &mut SegBuffer {
+        &mut self.buf
     }
 
     pub fn view_bounds(&self) -> &ViewBounds {

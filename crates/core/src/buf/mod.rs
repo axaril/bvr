@@ -7,6 +7,7 @@ use std::{
     io::{BufWriter, Cursor, Read, Seek, Write},
     num::NonZeroUsize,
     ops::Range,
+    path::Path,
     sync::{
         atomic::AtomicU64,
         mpsc::{Receiver, TryRecvError},
@@ -45,14 +46,49 @@ struct StreamInner {
 }
 
 struct FileInner {
-    segments: RefCell<LruCache<usize, Arc<Segment>>>,
+    segments: LruCache<usize, Arc<Segment>>,
 }
 
 impl FileInner {
     fn new(seg_count: NonZeroUsize) -> Self {
         Self {
-            segments: RefCell::new(LruCache::new(seg_count)),
+            segments: LruCache::new(seg_count),
         }
+    }
+}
+
+enum TempFileState {
+    Temp(NamedTempFile),
+    /// This state is used as a temporary placeholder during the transition from Temp to Persisted.
+    Intermediate,
+    Persisted(File),
+}
+
+impl TempFileState {
+    fn as_file(&self) -> &File {
+        match self {
+            TempFileState::Temp(temp) => temp.as_file(),
+            TempFileState::Intermediate => unreachable!(),
+            TempFileState::Persisted(file) => file,
+        }
+    }
+
+    fn persist(&mut self, path: &Path) -> Result<()> {
+        match std::mem::replace(self, TempFileState::Intermediate) {
+            TempFileState::Temp(file) => match file.persist(path) {
+                Ok(file) => *self = TempFileState::Persisted(file),
+                Err(err) => {
+                    *self = TempFileState::Temp(err.file);
+                    return Err(err.error.into());
+                }
+            },
+            TempFileState::Intermediate => return Err(crate::err::Error::Internal),
+            state @ TempFileState::Persisted(..) => {
+                *self = state;
+                return Err(crate::err::Error::AlreadyPersisted);
+            },
+        };
+        Ok(())
     }
 }
 
@@ -70,7 +106,7 @@ enum BufferRepr {
     Stream(RefCell<StreamInner>),
     /// Data is all present in memory in multiple anonymous mmaps.
     FileBackedStream {
-        file: NamedTempFile,
+        file: TempFileState,
         len: Arc<AtomicU64>,
         inner: RefCell<FileInner>,
     },
@@ -91,13 +127,11 @@ impl BufferMap {
     fn fetch(&self, seg_id: usize) -> Option<Arc<Segment>> {
         match &self.repr {
             BufferRepr::File { file, len, inner } => {
-                let FileInner { segments } = &mut *inner.borrow_mut();
-
                 let range = self.data_range_of_id(seg_id);
                 let range = range.start..range.end.min(*len);
 
+                let FileInner { segments } = &mut *inner.borrow_mut();
                 let segment = segments
-                    .borrow_mut()
                     .get_or_insert(seg_id, || {
                         Arc::new(Segment::map_file(range, file).expect("mmap was successful"))
                     })
@@ -130,8 +164,6 @@ impl BufferMap {
                 segments.get(seg_id).cloned()
             }
             BufferRepr::FileBackedStream { file, len, inner } => {
-                let FileInner { segments } = &mut *inner.borrow_mut();
-
                 let len = len.load(std::sync::atomic::Ordering::Acquire);
 
                 let range = self.data_range_of_id(seg_id);
@@ -140,10 +172,12 @@ impl BufferMap {
                 }
                 let range = range.start..range.end.min(len);
 
+                let FileInner { segments } = &mut *inner.borrow_mut();
                 let segment = segments
-                    .borrow_mut()
                     .get_or_insert(seg_id, || {
-                        Arc::new(Segment::map_file(range, file).expect("mmap was successful"))
+                        Arc::new(
+                            Segment::map_file(range, file.as_file()).expect("mmap was successful"),
+                        )
                     })
                     .clone();
                 Some(segment)
@@ -201,11 +235,9 @@ impl SegBuffer {
             index,
             map: BufferMap {
                 repr: BufferRepr::FileBackedStream {
-                    file,
+                    file: TempFileState::Temp(file),
                     len,
-                    inner: RefCell::new(FileInner {
-                        segments: RefCell::new(LruCache::new(seg_count)),
-                    }),
+                    inner: RefCell::new(FileInner::new(seg_count)),
                 },
                 segment_size: Self::SEGMENT_SIZE,
             },
@@ -214,6 +246,14 @@ impl SegBuffer {
 
     pub fn wait_complete(&self) {
         self.index.wait_complete()
+    }
+
+    pub fn persist(&mut self, path: &Path) -> Result<()> {
+        match &mut self.map.repr {
+            BufferRepr::FileBackedStream { file, .. } => file.persist(path),
+            BufferRepr::File { .. } => Err(crate::err::Error::AlreadyPersisted),
+            BufferRepr::Stream(_) => Err(crate::err::Error::Unimplemented),
+        }
     }
 
     #[cfg(test)]
@@ -643,14 +683,18 @@ mod tests {
 
     #[test]
     fn file_stream_file_backed_consistency_3() -> Result<()> {
-        file_stream_file_backed_consistency_base(File::open("../../tests/test_5000000.log")?, 5_000_000)
+        file_stream_file_backed_consistency_base(
+            File::open("../../tests/test_5000000.log")?,
+            5_000_000,
+        )
     }
 
     fn file_stream_file_backed_consistency_base(file: File, line_count: usize) -> Result<()> {
         let stream = BufReader::new(file.try_clone()?);
 
         let file_index = SegBuffer::read_file(file, SegBuffer::SEG_COUNT)?;
-        let stream_index = SegBuffer::read_stream_file_backed(Box::new(stream), SegBuffer::SEG_COUNT)?;
+        let stream_index =
+            SegBuffer::read_stream_file_backed(Box::new(stream), SegBuffer::SEG_COUNT)?;
 
         file_index.wait_complete();
         stream_index.wait_complete();
