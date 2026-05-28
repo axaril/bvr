@@ -1,5 +1,3 @@
-use std::sync::OnceLock;
-
 use ratatui::{prelude::*, widgets::*};
 
 use super::Mode;
@@ -55,10 +53,7 @@ impl<'a> MultiplexerWidget<'a> {
                 }
             };
         } else {
-            static BG_BLOCK: OnceLock<Block> = OnceLock::new();
-            BG_BLOCK
-                .get_or_init(|| Block::new().bg(colors::BG))
-                .render(area, buf);
+            Block::new().bg(colors::BG).render(area, buf);
         }
     }
 }

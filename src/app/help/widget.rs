@@ -1,5 +1,3 @@
-use std::sync::OnceLock;
-
 use ratatui::{
     buffer::Buffer,
     prelude::{Rect, *},
@@ -38,10 +36,11 @@ impl<'a> HelpWidget<'a> {
                 let mut spans = Vec::with_capacity(4);
 
                 if level == 0 {
-                    spans.push(Span::raw(":").fg(crate::colors::COMMAND_ACCENT));
+                    spans.push(Span::raw("  :").fg(crate::colors::COMMAND_ACCENT));
                 } else {
+                    spans.push(Span::raw("   "));
                     for _ in 0..level {
-                        spans.push(Span::raw("    "));
+                        spans.push(Span::raw("  "));
                     }
                 }
                 spans.push(Span::raw(cmd.name).fg(crate::colors::COMMAND_ACCENT));
@@ -86,10 +85,16 @@ impl<'a> HelpWidget<'a> {
     }
 
     pub fn render(&self, area: Rect, buf: &mut Buffer) {
-        static WIDGET_BLOCK: OnceLock<Block> = OnceLock::new();
-        WIDGET_BLOCK
-            .get_or_init(|| Block::new().bg(colors::BLACK))
-            .render(area, buf);
+        Block::new().bg(colors::BLACK).render(area, buf);
+
+        let Some([title_area, area]) = crate::split::split_top(area, 1) else {
+            return;
+        };
+
+        Line::raw("  Commands")
+            .fg(colors::BLACK)
+            .bg(colors::COMMAND_ACCENT)
+            .render(title_area, buf);
 
         let mut command_lines = Vec::new();
         let mut description_lines = Vec::new();

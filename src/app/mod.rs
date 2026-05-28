@@ -1215,7 +1215,7 @@ impl Viewer {
             });
 
         if let InputMode::Filter | InputMode::Config | InputMode::Help = self.mode {
-            const FILTER_MAX_HEIGHT: u16 = 10;
+            const FILTER_MAX_HEIGHT: u16 = 12;
             let mut area = mux_chunk;
             if let Some([view_chunk, panel_area]) =
                 crate::split::split_bottom(mux_chunk, FILTER_MAX_HEIGHT)

@@ -1,5 +1,3 @@
-use std::sync::OnceLock;
-
 use ratatui::{prelude::*, widgets::*};
 
 use crate::{
@@ -22,10 +20,7 @@ impl<'a> PromptWidget<'a> {
     pub fn render(self, area: Rect, f: &mut ratatui::Frame) {
         let buf = f.buffer_mut();
         let InputMode::Prompt(mode) = self.mode else {
-            static WIDGET_BLOCK: OnceLock<Block> = OnceLock::new();
-            WIDGET_BLOCK
-                .get_or_init(|| Block::new().bg(colors::BG))
-                .render(area, buf);
+            Block::new().bg(colors::BG).render(area, buf);
             return;
         };
 

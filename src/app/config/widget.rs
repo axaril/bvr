@@ -2,7 +2,6 @@ use super::super::mouse::MouseHandler;
 use crate::{colors, cursor::Cursor};
 use bitflags::bitflags;
 use ratatui::{prelude::*, widgets::*};
-use std::sync::OnceLock;
 
 pub struct ConfigViewerWidget<'a> {
     pub(super) app: &'a mut super::filters::State,
@@ -14,14 +13,20 @@ impl<'a> ConfigViewerWidget<'a> {
     }
 
     pub fn render(self, area: Rect, buf: &mut Buffer, handle: &mut MouseHandler) {
+        let Some([title_area, area]) = crate::split::split_top(area, 1) else {
+            return;
+        };
+
+        Line::raw("  Saved Filter Sets")
+            .fg(colors::BLACK)
+            .bg(colors::CONFIG_ACCENT)
+            .render(title_area, buf);
+
         let Some([left_chunk, right_chunk]) = crate::split::split_half(area) else {
             return;
         };
         {
-            static WIDGET_BLOCK: OnceLock<Block> = OnceLock::new();
-            WIDGET_BLOCK
-                .get_or_init(|| Block::new().bg(colors::STATUS_BAR))
-                .render(left_chunk, buf);
+            Block::new().bg(colors::STATUS_BAR).render(left_chunk, buf);
 
             let cursor_state = self.app.cursor().state();
 
@@ -62,10 +67,7 @@ impl<'a> ConfigViewerWidget<'a> {
                 });
         }
         if let Some(filter) = self.app.selected_filter() {
-            static WIDGET_BLOCK: OnceLock<Block> = OnceLock::new();
-            WIDGET_BLOCK
-                .get_or_init(|| Block::new().bg(colors::BLACK))
-                .render(right_chunk, buf);
+            Block::new().bg(colors::BLACK).render(right_chunk, buf);
 
             (right_chunk.y..right_chunk.bottom())
                 .zip(filter.filters())

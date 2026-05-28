@@ -6,7 +6,6 @@ use crate::{app::{filters::Filter, highlight}, colors, cursor::Cursor};
 use bitflags::bitflags;
 use crossterm::event::MouseEventKind;
 use ratatui::{prelude::*, widgets::*};
-use std::sync::OnceLock;
 
 pub struct FilterViewerWidget<'a> {
     pub(crate) view_index: usize,
@@ -15,10 +14,16 @@ pub struct FilterViewerWidget<'a> {
 
 impl FilterViewerWidget<'_> {
     pub fn render(self, area: Rect, buf: &mut Buffer, handle: &mut MouseHandler) {
-        static WIDGET_BLOCK: OnceLock<Block> = OnceLock::new();
-        WIDGET_BLOCK
-            .get_or_init(|| Block::new().bg(colors::STATUS_BAR))
-            .render(area, buf);
+        Block::new().bg(colors::STATUS_BAR).render(area, buf);
+
+        let Some([title_area, area]) = crate::split::split_top(area, 1) else {
+            return;
+        };
+
+        Line::raw("  Filters")
+            .fg(colors::BLACK)
+            .bg(colors::FILTER_ACCENT)
+            .render(title_area, buf);
 
         let cursor_state = self.compositor.cursor().state();
 
