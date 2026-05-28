@@ -1078,16 +1078,6 @@ impl Viewer {
     pub fn open_file(&mut self, path: &Path) -> Result<()> {
         let load_filters = self.mux.is_empty() && self.config.is_persistent();
 
-        if let Some(reader) = crate::tpc::decompress::DecompressionReader::new_must_decompress(path)
-        {
-            self.push_instance(
-                path.to_string_lossy().into_owned(),
-                None,
-                SegBuffer::read_stream_file_backed(Box::new(reader), SegBuffer::SEG_COUNT)?,
-            );
-            return Ok(());
-        }
-
         let file = std::fs::File::open(path)?;
 
         if !file.metadata()?.is_file() {
@@ -1100,6 +1090,17 @@ impl Viewer {
             .file_name()
             .map(|str| str.to_string_lossy().into_owned())
             .unwrap_or_else(|| String::from("Unnamed File"));
+
+        if let Some(reader) = crate::tpc::decompress::DecompressionReader::new_must_decompress(path)
+        {
+            self.push_instance(
+                name,
+                link,
+                SegBuffer::read_stream_file_backed(Box::new(reader), SegBuffer::SEG_COUNT)?,
+            );
+            return Ok(());
+        }
+
         self.push_instance(
             name,
             link,
