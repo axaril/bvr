@@ -739,7 +739,7 @@ impl App {
         } else {
             match self.commands.resolve(command) {
                 Ok((command, args)) => {
-                    command(self, args.as_slice());
+                    command(self, args);
                 }
                 Err(err) => {
                     self.app.viewer.status.msg(format!("{err}"));
@@ -750,7 +750,7 @@ impl App {
         true
     }
 
-    fn command_help(&mut self, _: &[&str]) {
+    fn command_help(&mut self, _: &str) {
         self.app.viewer.mode = InputMode::Help;
         self.app
             .viewer
@@ -758,11 +758,11 @@ impl App {
             .msg("help: displaying help".to_string());
     }
 
-    fn command_quit(&mut self, _: &[&str]) {
+    fn command_quit(&mut self, _: &str) {
         self.action_queue.push_back(Action::Exit);
     }
 
-    fn command_mcap(&mut self, _: &[&str]) {
+    fn command_mcap(&mut self, _: &str) {
         match self.term.toggle_mouse_capture() {
             Ok(_) => {
                 self.app.viewer.status.msg(format!(
@@ -783,14 +783,13 @@ impl App {
         }
     }
 
-    fn command_persist(&mut self, args: &[&str]) {
-        if args.len() != 1 {
-            self.app.viewer.status.msg("usage: open <path>".to_string());
+    fn command_persist(&mut self, arg: &str) {
+        if arg.is_empty() {
+            self.app.viewer.status.msg("usage: persist <path>".to_string());
             return;
         }
 
-        let path = args.into_iter().collect::<PathBuf>();
-
+        let path = PathBuf::from(arg);
         if let Some(instance) = self.app.viewer.mux.active_mut() {
             if let Err(err) = instance.buf_mut().persist(&path) {
                 self.app.viewer.status.msg(format!("persist: {err}"));
@@ -803,7 +802,7 @@ impl App {
         }
     }
 
-    fn command_realpath(&mut self, _: &[&str]) {
+    fn command_realpath(&mut self, _: &str) {
         if let Some(instance) = self.app.viewer.mux.active_mut() {
             if let Some(origin_path) = instance.origin_path().map(PathBuf::from) {
                 let link = origin_path.display();
@@ -820,7 +819,7 @@ impl App {
         }
     }
 
-    fn command_refresh(&mut self, _: &[&str]) {
+    fn command_refresh(&mut self, _: &str) {
         self.refresh = true;
         self.app
             .viewer
@@ -828,13 +827,13 @@ impl App {
             .msg("refresh: refresh requested".to_string());
     }
 
-    fn command_open(&mut self, args: &[&str]) {
-        if args.len() != 1 {
+    fn command_open(&mut self, arg: &str) {
+        if arg.is_empty() {
             self.app.viewer.status.msg("usage: open <path>".to_string());
             return;
         }
 
-        let path = args.into_iter().collect::<PathBuf>();
+        let path = PathBuf::from(arg);
         if let Err(err) = self.app.viewer.open_file(path.as_ref()) {
             self.app
                 .viewer
@@ -856,7 +855,7 @@ impl App {
         Ok(())
     }
 
-    fn command_pbcopy(&mut self, _: &[&str]) {
+    fn command_pbcopy(&mut self, _: &str) {
         if let Some(instance) = self.app.viewer.mux.active_mut() {
             match instance.export_string() {
                 Ok(ref text) => {
@@ -879,7 +878,7 @@ impl App {
         }
     }
 
-    fn command_close(&mut self, _: &[&str]) {
+    fn command_close(&mut self, _: &str) {
         if self.app.viewer.mux.active_mut().is_some() {
             self.app.viewer.mux.close_active()
         } else {
@@ -890,7 +889,7 @@ impl App {
         }
     }
 
-    fn command_gutter(&mut self, _: &[&str]) {
+    fn command_gutter(&mut self, _: &str) {
         self.app.viewer.toggle_gutter();
         self.app.viewer.status.msg(format!(
             "gutter: {}",
@@ -902,7 +901,7 @@ impl App {
         ));
     }
 
-    fn command_mux_tabs(&mut self, _: &[&str]) {
+    fn command_mux_tabs(&mut self, _: &str) {
         self.app.viewer.mux.set_mode(mux::Mode::ActiveOnly);
         self.app
             .viewer
@@ -910,7 +909,7 @@ impl App {
             .msg("mux: set to tabs mode".to_string());
     }
 
-    fn command_mux_panes(&mut self, _: &[&str]) {
+    fn command_mux_panes(&mut self, _: &str) {
         self.app.viewer.mux.set_mode(mux::Mode::SplitView);
         self.app
             .viewer
@@ -918,21 +917,21 @@ impl App {
             .msg("mux: set to split view mode".to_string());
     }
 
-    fn command_mux(&mut self, _: &[&str]) {
+    fn command_mux(&mut self, _: &str) {
         self.app
             .viewer
             .mux
             .set_mode(self.app.viewer.mux.mode().swap());
     }
 
-    fn command_filter_linked(&mut self, _: &[&str]) {
+    fn command_filter_linked(&mut self, _: &str) {
         self.app.viewer.linked_filters = !self.app.viewer.linked_filters;
         if self.app.viewer.linked_filters {
             self.app.viewer.replicate_filters_on_all_instances();
         }
     }
 
-    fn command_filter_persist(&mut self, _: &[&str]) {
+    fn command_filter_persist(&mut self, _: &str) {
         let new_persistence = !self.app.viewer.config.is_persistent();
 
         if let Err(err) = self.app.viewer.config.set_persistent(new_persistence) {
@@ -946,19 +945,11 @@ impl App {
             .msg(format!("filter persist: persistence = {new_persistence}"));
     }
 
-    fn command_filter_copy(&mut self, args: &[&str]) {
+    fn command_filter_copy(&mut self, idx: &str) {
         let Some(source) = self.app.viewer.mux.active_mut() else {
             return;
         };
         let export = source.compositor_mut().filters().export(None);
-
-        let Some(idx) = args.first() else {
-            self.app
-                .viewer
-                .status
-                .msg(String::from("filter export: requires instance index"));
-            return;
-        };
 
         let Ok(idx) = idx.parse::<usize>() else {
             self.app
@@ -985,12 +976,11 @@ impl App {
         target.import_user_filters(&export);
     }
 
-    fn command_filter_save(&mut self, args: &[&str]) {
+    fn command_filter_save(&mut self, arg: &str) {
         let Some(source) = self.app.viewer.mux.active_mut() else {
             return;
         };
-        let name: String = args.join(" ");
-        let export = source.compositor_mut().filters().export(Some(name));
+        let export = source.compositor_mut().filters().export(Some(arg.to_string()));
 
         if let Err(err) = self.app.viewer.config.add_filter(export) {
             self.app.viewer.status.msg(format!("filter save: {err}"));
@@ -1002,7 +992,7 @@ impl App {
             .msg("filter save: saved filters".to_string());
     }
 
-    fn command_filter_load(&mut self, _: &[&str]) {
+    fn command_filter_load(&mut self, _: &str) {
         self.app.viewer.mode = InputMode::Config;
         self.app
             .viewer
@@ -1010,7 +1000,7 @@ impl App {
             .msg("filter load: select filter to load".to_string());
     }
 
-    fn command_filter_clear(&mut self, _: &[&str]) {
+    fn command_filter_clear(&mut self, _: &str) {
         self.app.viewer.demux_mut(|instance| {
             instance.clear_filters();
         });
@@ -1020,7 +1010,7 @@ impl App {
             .msg("filter clear: cleared filters".to_string());
     }
 
-    fn command_filter_union(&mut self, _: &[&str]) {
+    fn command_filter_union(&mut self, _: &str) {
         self.app.viewer.demux_mut(|instance| {
             instance.set_composite_strategy(CompositeStrategy::Union);
         });
@@ -1030,7 +1020,7 @@ impl App {
             .msg("filter strategy: set to union".to_string());
     }
 
-    fn command_filter_intersect(&mut self, _: &[&str]) {
+    fn command_filter_intersect(&mut self, _: &str) {
         self.app.viewer.demux_mut(|instance| {
             instance.set_composite_strategy(CompositeStrategy::Intersection);
         });
@@ -1040,15 +1030,15 @@ impl App {
             .msg("filter strategy: set to intersection".to_string());
     }
 
-    fn command_export(&mut self, args: &[&str]) {
-        let Some(path) = args.first() else {
+    fn command_export(&mut self, arg: &str) {
+        if arg.is_empty() {
             self.app
                 .viewer
                 .status
                 .msg("usage: export <path>".to_string());
             return;
         };
-        let path = PathBuf::from(path);
+        let path = PathBuf::from(arg);
         if let Some(instance) = self.app.viewer.mux.active() {
             if let Err(err) = OpenOptions::new()
                 .create_new(true)

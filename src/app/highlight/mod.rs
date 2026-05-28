@@ -47,7 +47,7 @@ impl<'a> Highlighter<'a> {
     }
 
     fn peek(&self) -> Option<char> {
-        self.input[self.i + 1..].chars().next()
+        self.input[self.i..].chars().skip(1).next()
     }
 
     fn eat(&mut self, len: usize) -> &'a str {

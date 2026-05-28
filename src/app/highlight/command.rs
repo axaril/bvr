@@ -52,6 +52,11 @@ impl<'a> CommandHighlighter<'a> {
         let mut cmd: Option<&Command> = None;
         let mut take_remaining_as_args = TakeRemaining::None;
 
+        let skip = self.base.scan_bytes_until(|b| !b.is_ascii_whitespace());
+        if let Some(skip) = skip {
+            self.base.eat_and_color(skip);
+        }
+
         while let Some(arg) = self.eat_arg() {
             match take_remaining_as_args {
                 TakeRemaining::Args => {
@@ -65,6 +70,8 @@ impl<'a> CommandHighlighter<'a> {
                 TakeRemaining::None => {}
             }
 
+            let arg_str = arg.content;
+
             if let Some(current_cmd) = cmd.as_ref() {
                 let has_action = current_cmd.action.is_some();
                 let takes_args = !current_cmd.arguments.is_empty();
@@ -72,7 +79,7 @@ impl<'a> CommandHighlighter<'a> {
                 cmd = current_cmd
                     .subcommands
                     .iter()
-                    .find(|cmd| cmd.name == arg.content || cmd.aliases.contains(&arg.content));
+                    .find(|cmd| cmd.name == arg_str || cmd.aliases.contains(&arg_str));
 
                 if let Some(_) = cmd {
                     arg.fg(colors::COMMAND_ACCENT);
@@ -90,7 +97,7 @@ impl<'a> CommandHighlighter<'a> {
                 cmd = commands
                     .commands()
                     .iter()
-                    .find(|cmd| cmd.name == arg.content || cmd.aliases.contains(&arg.content));
+                    .find(|cmd| cmd.name == arg_str || cmd.aliases.contains(&arg_str));
 
                 if let Some(_) = cmd {
                     arg.fg(colors::COMMAND_ACCENT);

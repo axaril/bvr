@@ -1,6 +1,76 @@
 use crate::app::App;
 
-type CommandAction = fn(&mut App, &[&str]);
+type CommandAction = fn(&mut App, &str);
+
+/// Lexer for a command string.
+///
+/// Tokens are separated by ASCII whitespace. A token that begins with a single
+/// (`'`) or double (`"`) quote character is read until the matching closing
+/// quote; the surrounding quotes are stripped from the returned value. An
+/// unterminated quoted token consumes the rest of the input.
+///
+/// [`CommandLexer::remaining`] returns the unconsumed portion of the original
+/// string with leading and trailing whitespace trimmed, but with all internal
+/// spacing preserved — useful for passing a free-form tail argument verbatim to
+/// a command action.
+///
+/// # Example
+/// ```
+/// let mut lex = CommandLexer::new(r#"open  "my file.txt"  --read-only"#);
+/// assert_eq!(lex.next_token(), Some("open"));
+/// assert_eq!(lex.next_token(), Some("my file.txt"));
+/// assert_eq!(lex.remaining(), "--read-only");
+/// ```
+pub struct CommandLexer<'a> {
+    input: &'a str,
+}
+
+impl<'a> CommandLexer<'a> {
+    pub fn new(input: &'a str) -> Self {
+        Self { input }
+    }
+
+    /// Advance `pos` past any leading whitespace.
+    fn skip_whitespace(&mut self) {
+        self.input = self.input.trim_start();
+    }
+
+    /// Return the next token, or `None` when the input is exhausted.
+    pub fn next_token(&mut self) -> Option<&'a str> {
+        self.skip_whitespace();
+
+        if self.input.is_empty() {
+            return None;
+        }
+
+        let len = self
+            .input
+            .find(|c: char| c.is_whitespace())
+            .unwrap_or(self.input.len());
+
+        let token = &self.input[..len];
+        self.input = &self.input[len..];
+        Some(token)
+    }
+
+    /// Return the unconsumed tail of the input as a single string slice.
+    ///
+    /// Leading and trailing whitespace is trimmed, but all whitespace *between*
+    /// remaining tokens is left untouched. This lets you forward the rest of a
+    /// command line verbatim — e.g. a search pattern that may contain runs of
+    /// spaces — without losing fidelity.
+    pub fn remaining(&self) -> &'a str {
+        self.input.trim()
+    }
+}
+
+impl<'a> Iterator for CommandLexer<'a> {
+    type Item = &'a str;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.next_token()
+    }
+}
 
 pub struct Command {
     pub(super) name: &'static str,
@@ -116,11 +186,7 @@ impl CommandSystem {
         }
     }
 
-    pub fn resolve<'a>(
-        &self,
-        command: &'a str,
-    ) -> anyhow::Result<(CommandAction, Vec<&'a str>)> {
-
+    pub fn resolve<'a>(&self, command: &'a str) -> anyhow::Result<(CommandAction, &'a str)> {
         fn find_cmd<'a>(cmds: &'a [Command], token: Option<&str>) -> Option<&'a Command> {
             cmds.iter().find(|cmd| {
                 Some(cmd.name) == token
@@ -130,25 +196,23 @@ impl CommandSystem {
             })
         }
 
-        let parts: Vec<&str> = command.split_whitespace().collect();
+        let mut lexer = CommandLexer::new(command);
 
-        if parts.is_empty() {
+        if command.is_empty() {
             anyhow::bail!("Empty command");
         }
 
         let mut cmd: Option<&Command> = None;
-        let mut parts = parts.as_slice();
         loop {
-            let (part, rem): (Option<&str>, &[&str]) = parts
-                .split_first()
-                .map_or((None, &[]), |(&first, rest)| (Some(first), rest));
+            let rem = lexer.remaining();
+            let part = lexer.next_token();
 
             if let Some(current_cmd) = cmd {
                 let subcmd = find_cmd(&current_cmd.subcommands, part);
 
                 if subcmd.is_none() {
                     if let Some(action) = current_cmd.action {
-                        return Ok((action, parts.into_iter().copied().collect()));
+                        return Ok((action, rem));
                     } else {
                         let subcommand_string = current_cmd
                             .subcommands
@@ -165,7 +229,6 @@ impl CommandSystem {
                 }
 
                 cmd = subcmd;
-                parts = rem;
             } else {
                 let basecmd = find_cmd(&self.commands, part);
 
@@ -174,7 +237,6 @@ impl CommandSystem {
                 }
 
                 cmd = basecmd;
-                parts = rem;
             }
         }
     }
