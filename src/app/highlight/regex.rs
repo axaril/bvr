@@ -6,7 +6,7 @@ pub struct RegexHighlighter<'a> {
 
     // depth: usize,
     in_class: bool,
-    lit_start: Option<usize>,
+    lit_buf: Option<(&'a str, usize)>,
 
     group_stack: Vec<usize>,
     class_open_idx: Option<usize>,
@@ -18,7 +18,7 @@ impl<'a> RegexHighlighter<'a> {
             base: super::Highlighter::new(input),
             // depth: 0,
             in_class: false,
-            lit_start: None,
+            lit_buf: None,
             group_stack: Vec::new(),
             class_open_idx: None,
         }
@@ -26,20 +26,11 @@ impl<'a> RegexHighlighter<'a> {
 
     pub fn highlight(mut self) -> Vec<Span<'a>> {
         while let Some(ch) = self.base.current() {
-            let old_i = self.base.i;
-
             if self.in_class {
                 self.step_in_class(ch);
             } else {
                 self.step_outside_class(ch);
             }
-
-            // Ensure we are making forward progress
-            assert!(
-                self.base.i > old_i,
-                "highlighter did not advance at position {}",
-                self.base.i
-            );
         }
         self.flush_lit();
         self.finalize()
@@ -47,11 +38,11 @@ impl<'a> RegexHighlighter<'a> {
 
     /// Flush any accumulated literal characters as an unstyled span.
     fn flush_lit(&mut self) {
-        if let Some(s) = self.lit_start.take() {
-            if s < self.base.i {
+        if let Some((s, lit_len)) = self.lit_buf.take() {
+            if lit_len > 0 {
                 self.base
                     .spans
-                    .push(Span::raw(&self.base.input[s..self.base.i]));
+                    .push(Span::raw(&s[..lit_len]));
             }
         }
     }
@@ -62,7 +53,8 @@ impl<'a> RegexHighlighter<'a> {
             '\\' if let Some(nc) = self.base.peek() => {
                 self.flush_lit();
                 self.base
-                    .eat_and_color(1 + nc.len_utf8()).fg(colors::regex::ESCAPE);
+                    .eat_and_color(1 + nc.len_utf8())
+                    .fg(colors::regex::ESCAPE);
             }
             ']' => {
                 self.flush_lit();
@@ -71,7 +63,7 @@ impl<'a> RegexHighlighter<'a> {
                 self.class_open_idx = None;
             }
             ch => {
-                self.lit_start.get_or_insert(self.base.i);
+                self.lit_buf.get_or_insert((self.base.input, 0)).1 += ch.len_utf8();
                 self.base.eat(ch.len_utf8());
             }
         }
@@ -83,7 +75,8 @@ impl<'a> RegexHighlighter<'a> {
             '\\' if let Some(nc) = self.base.peek() => {
                 self.flush_lit();
                 self.base
-                    .eat_and_color(1 + nc.len_utf8()).fg(colors::regex::ESCAPE);
+                    .eat_and_color(1 + nc.len_utf8())
+                    .fg(colors::regex::ESCAPE);
             }
             '[' => {
                 self.flush_lit();
@@ -156,7 +149,7 @@ impl<'a> RegexHighlighter<'a> {
                     self.base.eat_and_color(qlen).fg(colors::regex::QUANTIFIER);
                 } else {
                     // just a regular literal
-                    self.lit_start.get_or_insert(self.base.i);
+                    self.lit_buf.get_or_insert((self.base.input, 0)).1 += 1;
                     self.base.eat(1);
                 }
             }
@@ -169,7 +162,7 @@ impl<'a> RegexHighlighter<'a> {
                 self.base.eat_and_color(1).fg(colors::regex::META);
             }
             ch => {
-                self.lit_start.get_or_insert(self.base.i);
+                self.lit_buf.get_or_insert((self.base.input, 0)).1 += ch.len_utf8();
                 self.base.eat(ch.len_utf8());
             }
         }

@@ -12,7 +12,6 @@ pub use selection::SelectionHighlighter;
 
 struct Highlighter<'a> {
     input: &'a str,
-    i: usize,
     spans: Vec<Span<'a>>,
 }
 
@@ -37,27 +36,26 @@ impl<'a> Highlighter<'a> {
     fn new(input: &'a str) -> Self {
         Self {
             input,
-            i: 0,
             spans: Vec::new(),
         }
     }
 
     fn current(&self) -> Option<char> {
-        self.input[self.i..].chars().next()
+        self.input.chars().next()
     }
 
     fn peek(&self) -> Option<char> {
-        self.input[self.i..].chars().skip(1).next()
+        self.input.chars().skip(1).next()
     }
 
     fn eat(&mut self, len: usize) -> &'a str {
-        let content = &self.input[self.i..][..len];
-        self.i += len;
+        let content = &self.input[..len];
+        self.input = &self.input[len..];
         content
     }
 
     fn scan_bytes_until(&self, pred: impl FnMut(u8) -> bool) -> Option<usize> {
-        self.input.as_bytes()[self.i..]
+        self.input.as_bytes()
             .iter()
             .copied()
             .position(pred)
@@ -72,7 +70,7 @@ impl<'a> Highlighter<'a> {
     }
 
     fn eat_remaining_and_color(&mut self) -> Option<ColorableSpan<'_, 'a>> {
-        let len = self.input.len() - self.i;
+        let len = self.input.len();
         (len > 0).then_some(self.eat_and_color(len))
     }
 

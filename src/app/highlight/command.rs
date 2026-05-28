@@ -23,7 +23,7 @@ impl<'a> CommandHighlighter<'a> {
     }
 
     fn eat_arg(&mut self) -> Option<ColorableSpan<'_, 'a>> {
-        if self.base.i >= self.base.input.len() {
+        if self.base.input.is_empty() {
             return None;
         }
 
@@ -41,7 +41,7 @@ impl<'a> CommandHighlighter<'a> {
                     false
                 }
             })
-            .unwrap_or(self.base.input.len() - self.base.i);
+            .unwrap_or(self.base.input.len());
 
         let mut span = self.base.eat_and_color(len);
         span.content = span.content.trim();
