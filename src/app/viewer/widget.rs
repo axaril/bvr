@@ -12,11 +12,12 @@ use regex::bytes::Regex;
 use unicode_segmentation::UnicodeSegmentation;
 
 pub struct ViewWidget<'a> {
-    pub view_index: usize,
-    pub instance: &'a mut Instance,
-    pub show_selection: bool,
-    pub gutter: bool,
-    pub regex: Option<(Color, &'a Regex)>,
+    view_index: usize,
+    instance: &'a mut Instance,
+    show_selection: bool,
+    gutter: Option<u16>,
+    regex: Option<(Color, &'a Regex)>,
+    left: usize,
 }
 
 bitflags! {
@@ -30,15 +31,26 @@ bitflags! {
     }
 }
 
-impl ViewWidget<'_> {
+impl<'a> ViewWidget<'a> {
+    pub fn new(
+        view_index: usize,
+        instance: &'a mut Instance,
+        show_selection: bool,
+        show_gutter: bool,
+        regex: Option<(Color, &'a Regex)>,
+    ) -> Self {
+        Self {
+            view_index,
+            show_selection,
+            gutter: show_gutter
+                .then(|| (instance.total_line_count().max(1).ilog10() as u16 + 1).max(4)),
+            left: instance.view_bounds().left(),
+            regex,
+            instance,
+        }
+    }
+
     pub fn render(self, area: Rect, buf: &mut Buffer, handle: &mut MouseHandler) {
-        let left = self.instance.view_bounds().left();
-        let gutter_size = self
-            .gutter
-            .then(|| (self.instance.total_line_count().max(1).ilog10() as u16 + 1).max(4));
-
-        let mut itoa_buf = itoa::Buffer::new();
-
         let cursor_state = self.instance.cursor().state();
 
         self.instance
@@ -52,7 +64,6 @@ impl ViewWidget<'_> {
             .for_each(|(y, line_data)| {
                 ViewerLineWidget {
                     parent: &self,
-                    start: left,
                     line_data,
                     ty: if let Some(line) = line_data {
                         match cursor_state {
@@ -83,8 +94,6 @@ impl ViewWidget<'_> {
                     } else {
                         LineType::None
                     },
-                    itoa_buf: &mut itoa_buf,
-                    gutter_size,
                 }
                 .render(Rect::new(area.x, y, area.width, 1), buf, handle);
             });
@@ -106,10 +115,6 @@ struct ViewerLineWidget<'a> {
     parent: &'a ViewWidget<'a>,
 
     line_data: Option<&'a CachedLine>,
-
-    itoa_buf: &'a mut itoa::Buffer,
-    gutter_size: Option<u16>,
-    start: usize,
     ty: LineType,
 }
 
@@ -133,11 +138,11 @@ impl ViewerLineWidget<'_> {
     fn split_line(&self, area: Rect) -> (Option<Rect>, Option<Rect>, Rect) {
         const SPECIAL_SIZE: u16 = 3;
 
-        if self.gutter_size.is_none() && !self.parent.show_selection {
+        if self.parent.gutter.is_none() && !self.parent.show_selection {
             return (None, None, area);
         }
 
-        let gutter_size = self.gutter_size.unwrap_or(0);
+        let gutter_size = self.parent.gutter.unwrap_or(0);
         let mut gutter_chunk = area;
         gutter_chunk.width = gutter_size;
 
@@ -168,7 +173,8 @@ impl ViewerLineWidget<'_> {
         };
 
         if let Some(gutter_chunk) = gutter_chunk {
-            let ln_str = self.itoa_buf.format(line.line_number + 1);
+            let mut itoa_buf = itoa::Buffer::new();
+            let ln_str = itoa_buf.format(line.line_number + 1);
             let ln = Line::raw(ln_str).alignment(Alignment::Right).fg(
                 if self.ty.contains(LineType::Bookmarked) {
                     colors::SELECT_ACCENT
@@ -190,7 +196,7 @@ impl ViewerLineWidget<'_> {
             let data = &line.data;
             let mut chars = data.grapheme_indices(true);
             let start = chars
-                .nth(self.start)
+                .nth(self.parent.left)
                 .map(|(idx, _)| idx)
                 .unwrap_or(data.len());
             let end = chars

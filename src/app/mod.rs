@@ -1280,13 +1280,13 @@ impl Viewer {
                     }
                 };
 
-                viewer::Widget {
+                viewer::Widget::new(
                     view_index,
                     instance,
-                    show_selection: self.mode == InputMode::Visual,
-                    gutter: self.gutter,
+                    self.mode == InputMode::Visual,
+                    self.gutter,
                     regex,
-                }
+                )
                 .render(pane_chunk, buf, handler);
             },
         );
