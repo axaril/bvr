@@ -1,5 +1,6 @@
 mod base;
-pub mod filters;
+mod settings;
+mod filters;
 mod widget;
 
 use anyhow::Result;
@@ -17,4 +18,18 @@ fn storage_dir_create(app_id: &str) -> Result<PathBuf> {
     let path = storage_dir(app_id).ok_or(bvr_core::err::Error::Internal)?;
     std::fs::create_dir_all(&path)?;
     Ok(path)
+}
+
+pub struct State {
+    pub settings: settings::SettingsConfigState,
+    pub filters: filters::FilterConfigState,
+}
+
+impl State {
+    pub fn new() -> Self {
+        Self {
+            settings: settings::SettingsConfigState::new(),
+            filters: filters::FilterConfigState::new(),
+        }
+    }
 }

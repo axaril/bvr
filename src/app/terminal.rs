@@ -11,7 +11,7 @@ pub type Terminal = ratatui::Terminal<Backend>;
 
 pub struct TerminalState {
     inner: Terminal,
-    pub mouse_capture: bool,
+    mouse_capture: bool,
     entered: bool,
 }
 
@@ -37,10 +37,10 @@ impl Drop for TerminalState {
 }
 
 impl TerminalState {
-    pub fn new(term: Terminal) -> Self {
+    pub fn new(term: Terminal, mouse_capture: bool) -> Self {
         TerminalState {
             inner: term,
-            mouse_capture: true,
+            mouse_capture,
             entered: false,
         }
     }
@@ -48,12 +48,20 @@ impl TerminalState {
     pub fn enter_terminal(&mut self) -> Result<()> {
         assert!(!self.entered);
         enable_raw_mode()?;
-        crossterm::execute!(
-            self.inner.backend_mut(),
-            EnterAlternateScreen,
-            EnableBracketedPaste,
-            EnableMouseCapture,
-        )?;
+        if self.mouse_capture {
+            crossterm::execute!(
+                self.inner.backend_mut(),
+                EnterAlternateScreen,
+                EnableBracketedPaste,
+                EnableMouseCapture,
+            )?;
+        } else {
+            crossterm::execute!(
+                self.inner.backend_mut(),
+                EnterAlternateScreen,
+                EnableBracketedPaste,
+            )?;
+        }
         self.entered = true;
         Ok(())
     }
@@ -79,14 +87,18 @@ impl TerminalState {
         Ok(())
     }
 
-    pub fn toggle_mouse_capture(&mut self) -> Result<()> {
+    pub fn mouse_capture(&self) -> bool {
+        self.mouse_capture
+    }
+
+    pub fn toggle_mouse_capture(&mut self) -> Result<bool> {
         self.mouse_capture = !self.mouse_capture;
         if self.mouse_capture {
             crossterm::execute!(self.inner.backend_mut(), EnableMouseCapture)?;
         } else {
             crossterm::execute!(self.inner.backend_mut(), DisableMouseCapture)?;
         }
-        Ok(())
+        Ok(self.mouse_capture)
     }
 
     pub fn clear(&mut self) -> Result<()> {

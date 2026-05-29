@@ -52,7 +52,7 @@ where
         Ok(())
     }
 
-    pub fn load_read_save<F, R>(&mut self, f: F) -> Result<Option<R>>
+    pub fn load_read_save<F, R>(&mut self, f: F) -> Result<R>
     where
         F: FnOnce(&mut T) -> R,
     {
@@ -65,14 +65,14 @@ where
 
         self.save()?;
 
-        Ok(Some(result))
+        Ok(result)
     }
 
-    pub fn load_and_save<F, R>(&mut self, f: F) -> Result<()>
+    pub fn load_and_save<F>(&mut self, f: F) -> Result<()>
     where
-        F: FnOnce(&mut T) -> R,
+        F: FnOnce(&mut T),
     {
-        self.load_read_save(f).map(|_| ())
+        self.load_read_save(f)
     }
 
     pub fn read<'a, F, R>(&'a self, f: F) -> Result<R>

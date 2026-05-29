@@ -4,7 +4,7 @@ use ratatui::prelude::*;
 use crate::{
     app::{
         actions::{Action, NormalAction},
-        mouse::MouseHandler,
+        mouse::EventHandler,
     },
     colors,
 };
@@ -16,7 +16,7 @@ pub struct TabWidget<'a> {
 }
 
 impl TabWidget<'_> {
-    pub fn render(self, area: Rect, buf: &mut Buffer, handle: &mut MouseHandler) {
+    pub fn render(self, area: Rect, buf: &mut Buffer, handle: &mut EventHandler) {
         Line::from(vec![
             if self.active {
                 Span::raw("▌ ").fg(colors::TAB_SIDE_ACTIVE)

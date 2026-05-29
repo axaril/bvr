@@ -2,17 +2,23 @@ use super::actions::Action;
 use crossterm::event::{Event, MouseEvent};
 use ratatui::layout::Rect;
 
-pub struct MouseHandler {
+pub struct EventHandler {
+    accept_mouse: bool,
     event: Option<Event>,
     action: Option<super::actions::Action>,
 }
 
-impl MouseHandler {
+impl EventHandler {
     pub fn new() -> Self {
         Self {
+            accept_mouse: true,
             event: None,
             action: None,
         }
+    }
+
+    pub fn set_accept_mouse(&mut self, accept: bool) {
+        self.accept_mouse = accept;
     }
 
     #[inline]
@@ -24,6 +30,10 @@ impl MouseHandler {
     where
         F: FnOnce(&MouseEvent) -> Option<Action>,
     {
+        if !self.accept_mouse {
+            return;
+        }
+
         if let Some(Event::Mouse(mouse)) = self.event.as_ref() {
             if area.intersects(Rect {
                 x: mouse.column,

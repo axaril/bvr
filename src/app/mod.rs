@@ -19,7 +19,7 @@ use self::{
     actions::{Action, CommandAction, NormalAction, VisualAction},
     control::{InputMode, PromptMode},
     keybinding::Keybinding,
-    mouse::MouseHandler,
+    mouse::EventHandler,
 };
 use crate::{
     app::{
@@ -194,8 +194,8 @@ impl App {
 
     pub fn new(state: State, term: Terminal) -> Self {
         Self {
+            term: TerminalState::new(term, state.viewer.config.settings.mouse_capture()),
             app: state,
-            term: TerminalState::new(term),
             clipboard: Clipboard::new().ok(),
             action_queue: VecDeque::new(),
             refresh: false,
@@ -205,14 +205,13 @@ impl App {
 
     pub fn run(&mut self) -> Result<()> {
         self.term.enter_terminal()?;
-
         self.event_loop()?;
 
-        if self.app.viewer.config.is_persistent() {
+        if self.app.viewer.config.settings.persist_filter() {
             if let Some(source) = self.app.viewer.mux.active_mut() {
                 let export = source.compositor_mut().filters().export(None);
 
-                if let Err(err) = self.app.viewer.config.set_persistent_filter(export) {
+                if let Err(err) = self.app.viewer.config.filters.set_persistent_filter(export) {
                     self.app.viewer.status.msg(format!("filter save: {err}"));
                 }
 
@@ -227,10 +226,12 @@ impl App {
     }
 
     fn event_loop(&mut self) -> Result<()> {
-        let mut mouse_handler = MouseHandler::new();
+        let mut mouse_handler = EventHandler::new();
 
         let mut last_drawn: Option<Instant> = None;
         loop {
+            mouse_handler.set_accept_mouse(self.term.mouse_capture());
+
             if self.refresh {
                 self.term.clear()?;
                 self.refresh = false;
@@ -250,7 +251,7 @@ impl App {
             {
                 self.term.draw(render)?;
                 last_drawn = Some(now);
-            } else if self.term.mouse_capture {
+            } else if self.term.mouse_capture() {
                 // We render to capture mouse actions
                 render(&mut self.term.get_frame());
                 // But we avoid drawing so terminal won't look weird
@@ -444,9 +445,14 @@ impl App {
                     direction,
                     select,
                     delta,
-                } => self.app.viewer.config.move_select(direction, select, delta),
+                } => self
+                    .app
+                    .viewer
+                    .config
+                    .filters
+                    .move_select(direction, select, delta),
                 ConfigAction::LoadSelectedFilter => {
-                    let Some(export) = self.app.viewer.config.selected_filter() else {
+                    let Some(export) = self.app.viewer.config.filters.selected_filter() else {
                         return Ok(true);
                     };
 
@@ -463,8 +469,14 @@ impl App {
                     ));
                 }
                 ConfigAction::RemoveSelectedFilter => {
-                    let selected_filters = self.app.viewer.config.selected_filter_indices();
-                    if let Err(err) = self.app.viewer.config.remove_filters(selected_filters) {
+                    let selected_filters = self.app.viewer.config.filters.selected_filter_indices();
+                    if let Err(err) = self
+                        .app
+                        .viewer
+                        .config
+                        .filters
+                        .remove_filters(selected_filters)
+                    {
                         self.app
                             .viewer
                             .status
@@ -772,15 +784,21 @@ impl App {
 
     fn command_mcap(&mut self, _: &str) {
         match self.term.toggle_mouse_capture() {
-            Ok(_) => {
+            Ok(mouse_capture) => {
                 self.app.viewer.status.msg(format!(
                     "mouse capture {}",
-                    if self.term.mouse_capture {
+                    if mouse_capture {
                         "enabled"
                     } else {
                         "disabled"
                     }
                 ));
+                self.app
+                    .viewer
+                    .config
+                    .settings
+                    .set_mouse_capture(mouse_capture)
+                    .ok();
             }
             Err(_) => {
                 self.app
@@ -901,15 +919,17 @@ impl App {
     }
 
     fn command_gutter(&mut self, _: &str) {
-        self.app.viewer.toggle_gutter();
-        self.app.viewer.status.msg(format!(
-            "gutter: {}",
-            if self.app.viewer.gutter {
-                "enabled"
-            } else {
-                "disabled"
+        match self.app.viewer.config.settings.toggle_show_gutter() {
+            Err(err) => {
+                self.app.viewer.status.msg(format!("gutter toggle: {err}"));
             }
-        ));
+            Ok(show_gutter) => {
+                self.app.viewer.status.msg(format!(
+                    "gutter: {}",
+                    if show_gutter { "enabled" } else { "disabled" }
+                ));
+            }
+        }
     }
 
     fn command_mux_tabs(&mut self, _: &str) {
@@ -943,17 +963,18 @@ impl App {
     }
 
     fn command_filter_persist(&mut self, _: &str) {
-        let new_persistence = !self.app.viewer.config.is_persistent();
-
-        if let Err(err) = self.app.viewer.config.set_persistent(new_persistence) {
-            self.app.viewer.status.msg(format!("filter persist: {err}"));
-            return;
+        match self.app.viewer.config.settings.toggle_persist_filter() {
+            Err(err) => {
+                self.app.viewer.status.msg(format!("filter persist: {err}"));
+                return;
+            }
+            Ok(new_persistence) => {
+                self.app
+                    .viewer
+                    .status
+                    .msg(format!("filter persist: persistence = {new_persistence}"));
+            }
         }
-
-        self.app
-            .viewer
-            .status
-            .msg(format!("filter persist: persistence = {new_persistence}"));
     }
 
     fn command_filter_copy(&mut self, idx: &str) {
@@ -996,7 +1017,7 @@ impl App {
             .filters()
             .export(Some(arg.to_string()));
 
-        if let Err(err) = self.app.viewer.config.add_filter(export) {
+        if let Err(err) = self.app.viewer.config.filters.add_filter(export) {
             self.app.viewer.status.msg(format!("filter save: {err}"));
         }
 
@@ -1092,10 +1113,9 @@ pub struct Viewer {
     mux: mux::State,
     status: status::State,
     prompt: prompt::State,
-    config: config::filters::State,
+    config: config::State,
     help: help::State,
     regex_cache: Option<RegexCache>,
-    gutter: bool,
     linked_filters: bool,
 }
 
@@ -1106,10 +1126,9 @@ impl Viewer {
             mux: mux::State::new(),
             status: status::State::new(),
             prompt: prompt::State::new(),
-            config: config::filters::State::new(),
+            config: config::State::new(),
             help: help::State::new(),
             regex_cache: None,
-            gutter: true,
             linked_filters: false,
         }
     }
@@ -1119,7 +1138,7 @@ impl Viewer {
     }
 
     pub fn open_file(&mut self, path: &Path) -> Result<()> {
-        let load_filters = self.mux.is_empty() && self.config.is_persistent();
+        let load_filters = self.mux.is_empty() && self.config.settings.persist_filter();
 
         let file = std::fs::File::open(path)?;
 
@@ -1151,7 +1170,7 @@ impl Viewer {
         );
 
         if load_filters {
-            let filter_set = match self.config.get_persistent_filter() {
+            let filter_set = match self.config.filters.get_persistent_filter() {
                 Ok(filters) => filters,
                 Err(err) => {
                     self.status.msg(format!("filter persist/load: {err}"));
@@ -1208,7 +1227,7 @@ impl Viewer {
         }
     }
 
-    fn ui(&mut self, f: &mut ratatui::Frame, commands: &CommandSystem, handler: &mut MouseHandler) {
+    fn ui(&mut self, f: &mut ratatui::Frame, commands: &CommandSystem, handler: &mut EventHandler) {
         let Some(chunks) = mux::split_mux(f.area()) else {
             return;
         };
@@ -1253,7 +1272,7 @@ impl Viewer {
                         });
                 }
                 InputMode::Config => {
-                    config::Widget::hydrate(&mut self.config).render(area, buf, handler);
+                    config::Widget::hydrate(&mut self.config.filters).render(area, buf, handler);
                 }
                 InputMode::Help => {
                     self.help.set_height(usize::from(area.height));
@@ -1328,7 +1347,7 @@ impl Viewer {
                     view_index,
                     instance,
                     self.mode == InputMode::Visual,
-                    self.gutter,
+                    self.config.settings.show_gutter(),
                     regex,
                 )
                 .render(pane_chunk, buf, handler);
@@ -1347,10 +1366,6 @@ impl Viewer {
             prompt: &mut self.prompt,
         }
         .render(cmd_chunk, f);
-    }
-
-    pub fn toggle_gutter(&mut self) {
-        self.gutter = !self.gutter;
     }
 
     pub fn demux_mut<F>(&mut self, f: F)

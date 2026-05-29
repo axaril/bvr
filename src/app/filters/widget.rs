@@ -1,6 +1,6 @@
 use super::super::{
     actions::{Action, FilterAction},
-    mouse::MouseHandler,
+    mouse::EventHandler,
 };
 use crate::{
     app::{
@@ -19,7 +19,7 @@ pub struct FilterViewerWidget<'a> {
 }
 
 impl FilterViewerWidget<'_> {
-    pub fn render(self, area: Rect, buf: &mut Buffer, handle: &mut MouseHandler) {
+    pub fn render(self, area: Rect, buf: &mut Buffer, handle: &mut EventHandler) {
         Panel::new("Filters", colors::FILTER_ACCENT, Some(colors::STATUS_BAR)).render(
             area,
             buf,
@@ -27,7 +27,7 @@ impl FilterViewerWidget<'_> {
         );
     }
 
-    fn render_inner(self, area: Rect, buf: &mut Buffer, handle: &mut MouseHandler) {
+    fn render_inner(self, area: Rect, buf: &mut Buffer, handle: &mut EventHandler) {
         let cursor_state = self.compositor.cursor().state();
 
         self.compositor.update_view_bounds(area.height as usize);
@@ -57,7 +57,7 @@ struct FilterLineWidget<'a> {
 }
 
 impl FilterLineWidget<'_> {
-    pub fn render(self, area: Rect, buf: &mut Buffer, handle: &mut MouseHandler) {
+    pub fn render(self, area: Rect, buf: &mut Buffer, handle: &mut EventHandler) {
         let color = self.filter.color();
 
         let mut v = vec![

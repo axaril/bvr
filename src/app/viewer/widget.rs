@@ -2,7 +2,7 @@ use crate::app::common::gutter::GutterType;
 use crate::app::{
     actions::{Action, NormalAction},
     control::ViewDelta,
-    mouse::MouseHandler,
+    mouse::EventHandler,
     viewer::{instance::Instance, virtual_view::CachedLine},
 };
 use crate::{app::actions::VisualAction, colors, direction::Direction};
@@ -39,7 +39,7 @@ impl<'a> ViewWidget<'a> {
         }
     }
 
-    pub fn render(self, area: Rect, buf: &mut Buffer, handle: &mut MouseHandler) {
+    pub fn render(self, area: Rect, buf: &mut Buffer, handle: &mut EventHandler) {
         let cursor_state = self.instance.cursor().state();
 
         self.instance
@@ -104,7 +104,7 @@ impl ViewerLineWidget<'_> {
         (Some(gutter_chunk), Some(cursor_chunk), data_chunk)
     }
 
-    pub fn render(self, area: Rect, buf: &mut Buffer, handle: &mut MouseHandler) {
+    pub fn render(self, area: Rect, buf: &mut Buffer, handle: &mut EventHandler) {
         let (gutter_chunk, cursor_chunk, data_chunk) = self.split_line(area);
 
         let Some(line) = &self.line_data else {

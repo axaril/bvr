@@ -1,4 +1,4 @@
-use super::super::mouse::MouseHandler;
+use super::super::mouse::EventHandler;
 use crate::{
     app::common::{Panel, gutter::GutterType},
     colors,
@@ -14,7 +14,7 @@ impl<'a> ConfigViewerWidget<'a> {
         Self { app: state }
     }
 
-    pub fn render(self, area: Rect, buf: &mut Buffer, handle: &mut MouseHandler) {
+    pub fn render(self, area: Rect, buf: &mut Buffer, handle: &mut EventHandler) {
         Panel::new("Saved Filter Sets", colors::CONFIG_ACCENT, None).render(
             area,
             buf,
@@ -22,7 +22,7 @@ impl<'a> ConfigViewerWidget<'a> {
         );
     }
 
-    fn render_inner(self, area: Rect, buf: &mut Buffer, handle: &mut MouseHandler) {
+    fn render_inner(self, area: Rect, buf: &mut Buffer, handle: &mut EventHandler) {
         let Some([left_chunk, right_chunk]) = crate::split::split_half(area) else {
             return;
         };
@@ -77,7 +77,7 @@ struct ConfigLineWidget<'a> {
 }
 
 impl ConfigLineWidget<'_> {
-    pub fn render(self, area: Rect, buf: &mut Buffer, _: &mut MouseHandler) {
+    pub fn render(self, area: Rect, buf: &mut Buffer, _: &mut EventHandler) {
         let mut v = vec![Span::raw(self.ty.to_gutter()).fg(colors::CONFIG_ACCENT)];
 
         v.push(Span::raw(self.name.unwrap_or("Untitled Filter Set")).fg(colors::WHITE));
@@ -93,7 +93,7 @@ struct FilterLineWidget<'a> {
 }
 
 impl FilterLineWidget<'_> {
-    pub fn render(self, area: Rect, buf: &mut Buffer, _: &mut MouseHandler) {
+    pub fn render(self, area: Rect, buf: &mut Buffer, _: &mut EventHandler) {
         let spans = vec![
             Span::raw(if self.enabled { " ● " } else { " ◯ " }).fg(self.color),
             Span::raw(self.name).fg(self.color),

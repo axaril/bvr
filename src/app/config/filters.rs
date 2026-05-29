@@ -8,12 +8,13 @@ use crate::{
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 
-const FILTER_FILE: &str = "filters.toml";
+const FILE: &str = "filters.toml";
 
 #[derive(Serialize, Deserialize, Default)]
 struct LoadedFilterData {
-    persistent: bool,
+    #[serde(default)]
     persistent_filter: Option<FilterExportSet>,
+    #[serde(default)]
     filters: Vec<FilterExportSet>,
 }
 
@@ -28,20 +29,10 @@ pub use FilterConfigState as State;
 impl FilterConfigState {
     pub fn new() -> Self {
         Self {
-            inner: super::ConfigBase::new(std::path::Path::new(FILTER_FILE)),
+            inner: super::ConfigBase::new(std::path::Path::new(FILE)),
             bounds: ViewBounds::new(),
             cursor: CursorState::new(),
         }
-    }
-
-    pub fn set_persistent(&mut self, persistent: bool) -> Result<()> {
-        self.inner.load_and_save(|data| {
-            data.persistent = persistent;
-        })
-    }
-
-    pub fn is_persistent(&self) -> bool {
-        self.inner.read(|data| data.persistent).unwrap_or(false)
     }
 
     pub fn get_persistent_filter(&mut self) -> Result<Option<&FilterExportSet>> {
@@ -125,7 +116,7 @@ impl FilterConfigState {
             data.filters.drain(range);
             data.filters.len()
         })?;
-        self.cursor.clamp(len.unwrap_or(0).saturating_sub(1));
+        self.cursor.clamp(len.saturating_sub(1));
         Ok(())
     }
 
