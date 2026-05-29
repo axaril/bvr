@@ -4,7 +4,7 @@ use ratatui::{
     widgets::*,
 };
 
-use crate::colors;
+use crate::{app::common::Panel, colors};
 
 pub struct HelpWidget<'a> {
     state: &'a mut super::State,
@@ -84,18 +84,15 @@ impl<'a> HelpWidget<'a> {
         }
     }
 
-    pub fn render(&self, area: Rect, buf: &mut Buffer) {
-        Block::new().bg(colors::BLACK).render(area, buf);
+    pub fn render(self, area: Rect, buf: &mut Buffer) {
+        Panel::new("Commands", colors::COMMAND_ACCENT, Some(colors::BLACK)).render(
+            area,
+            buf,
+            |area, buf| self.render_inner(area, buf),
+        );
+    }
 
-        let Some([title_area, area]) = crate::split::split_top(area, 1) else {
-            return;
-        };
-
-        Line::raw("  Commands")
-            .fg(colors::BLACK)
-            .bg(colors::COMMAND_ACCENT)
-            .render(title_area, buf);
-
+    fn render_inner(self, area: Rect, buf: &mut Buffer) {
         let mut command_lines = Vec::new();
         let mut description_lines = Vec::new();
         let mut max_command_width = 0;

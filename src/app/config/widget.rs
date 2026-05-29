@@ -1,5 +1,5 @@
 use super::super::mouse::MouseHandler;
-use crate::{colors, cursor::Cursor};
+use crate::{app::common::Panel, colors, cursor::Cursor};
 use bitflags::bitflags;
 use ratatui::{prelude::*, widgets::*};
 
@@ -13,15 +13,14 @@ impl<'a> ConfigViewerWidget<'a> {
     }
 
     pub fn render(self, area: Rect, buf: &mut Buffer, handle: &mut MouseHandler) {
-        let Some([title_area, area]) = crate::split::split_top(area, 1) else {
-            return;
-        };
+        Panel::new("Saved Filter Sets", colors::CONFIG_ACCENT, None).render(
+            area,
+            buf,
+            |area, buf| self.render_inner(area, buf, handle),
+        );
+    }
 
-        Line::raw("  Saved Filter Sets")
-            .fg(colors::BLACK)
-            .bg(colors::CONFIG_ACCENT)
-            .render(title_area, buf);
-
+    fn render_inner(self, area: Rect, buf: &mut Buffer, handle: &mut MouseHandler) {
         let Some([left_chunk, right_chunk]) = crate::split::split_half(area) else {
             return;
         };

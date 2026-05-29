@@ -5,6 +5,7 @@ mod keybinding;
 mod mouse;
 mod terminal;
 
+mod common;
 mod config;
 mod filters;
 mod help;
@@ -785,7 +786,10 @@ impl App {
 
     fn command_persist(&mut self, arg: &str) {
         if arg.is_empty() {
-            self.app.viewer.status.msg("usage: persist <path>".to_string());
+            self.app
+                .viewer
+                .status
+                .msg("usage: persist <path>".to_string());
             return;
         }
 
@@ -980,7 +984,10 @@ impl App {
         let Some(source) = self.app.viewer.mux.active_mut() else {
             return;
         };
-        let export = source.compositor_mut().filters().export(Some(arg.to_string()));
+        let export = source
+            .compositor_mut()
+            .filters()
+            .export(Some(arg.to_string()));
 
         if let Err(err) = self.app.viewer.config.add_filter(export) {
             self.app.viewer.status.msg(format!("filter save: {err}"));

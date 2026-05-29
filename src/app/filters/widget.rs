@@ -2,10 +2,10 @@ use super::super::{
     actions::{Action, FilterAction},
     mouse::MouseHandler,
 };
-use crate::{app::{filters::Filter, highlight}, colors, cursor::Cursor};
+use crate::{app::{common::Panel, filters::Filter, highlight}, colors, cursor::Cursor};
 use bitflags::bitflags;
 use crossterm::event::MouseEventKind;
-use ratatui::{prelude::*, widgets::*};
+use ratatui::prelude::*;
 
 pub struct FilterViewerWidget<'a> {
     pub(crate) view_index: usize,
@@ -14,17 +14,14 @@ pub struct FilterViewerWidget<'a> {
 
 impl FilterViewerWidget<'_> {
     pub fn render(self, area: Rect, buf: &mut Buffer, handle: &mut MouseHandler) {
-        Block::new().bg(colors::STATUS_BAR).render(area, buf);
+        Panel::new("Filters", colors::FILTER_ACCENT, Some(colors::STATUS_BAR)).render(
+            area,
+            buf,
+            |area, buf| self.render_inner(area, buf, handle),
+        );
+    }
 
-        let Some([title_area, area]) = crate::split::split_top(area, 1) else {
-            return;
-        };
-
-        Line::raw("  Filters")
-            .fg(colors::BLACK)
-            .bg(colors::FILTER_ACCENT)
-            .render(title_area, buf);
-
+    fn render_inner(self, area: Rect, buf: &mut Buffer, handle: &mut MouseHandler) {
         let cursor_state = self.compositor.cursor().state();
 
         self.compositor.update_view_bounds(area.height as usize);

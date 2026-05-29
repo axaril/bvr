@@ -19,7 +19,7 @@ impl TabWidget<'_> {
     pub fn render(self, area: Rect, buf: &mut Buffer, handle: &mut MouseHandler) {
         Line::from(vec![
             if self.active {
-                Span::raw("▍ ").fg(colors::TAB_SIDE_ACTIVE)
+                Span::raw("▌ ").fg(colors::TAB_SIDE_ACTIVE)
             } else {
                 Span::raw("▏ ").fg(colors::TAB_SIDE_INACTIVE)
             },
