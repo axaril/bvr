@@ -61,7 +61,7 @@ impl FilterLineWidget<'_> {
         let color = self.filter.color();
 
         let mut v = vec![
-            Span::raw(self.ty.to_gutter(" - ")).fg(colors::FILTER_ACCENT),
+            Span::raw(self.ty.to_gutter()).fg(colors::FILTER_ACCENT),
             Span::raw(if self.enabled { "● " } else { "◯ " }).fg(color),
         ];
 

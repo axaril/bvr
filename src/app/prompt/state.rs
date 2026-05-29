@@ -25,13 +25,13 @@ impl PromptMovement {
     }
 }
 
-struct CompletionCycle {
+pub struct CompletionCycle {
     /// Part of the buffer that comes before the token being completed.
-    prefix: String,
+    pub prefix: String,
     /// Ordered list of candidates to cycle through.
-    candidates: Vec<&'static str>,
+    pub candidates: Vec<&'static str>,
     /// Index of the candidate currently shown in the buffer.
-    index: usize,
+    pub index: usize,
 }
 
 pub struct PromptApp {
@@ -173,7 +173,7 @@ impl PromptApp {
         });
     }
 
-    pub fn advance_completion(&mut self) -> bool {
+    pub fn advance_completion(&mut self) -> Option<&CompletionCycle> {
         self.completion_cycle
             .as_mut()
             .map(|cycle| {
@@ -181,8 +181,9 @@ impl PromptApp {
                 let index = cycle.index;
                 format!("{}{} ", cycle.prefix, cycle.candidates[index])
             })
-            .map(|buf| self.set_current(buf))
-            .is_some()
+            .map(|buf| self.set_current(buf));
+
+        self.completion_cycle.as_ref()
     }
 
     pub fn enter_char(&mut self, input: char) {

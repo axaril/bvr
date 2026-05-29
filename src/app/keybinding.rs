@@ -616,7 +616,9 @@ impl Keybinding {
                     select: key.modifiers.contains(KeyModifiers::SHIFT),
                     delta: ViewDelta::HalfPage,
                 })),
-                KeyCode::Enter => Some(Action::Config(ConfigAction::LoadSelectedFilter)),
+                KeyCode::Enter | KeyCode::Char(' ') => {
+                    Some(Action::Config(ConfigAction::LoadSelectedFilter))
+                }
                 KeyCode::Backspace => Some(Action::Config(ConfigAction::RemoveSelectedFilter)),
                 _ => None,
             },

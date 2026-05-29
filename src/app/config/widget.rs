@@ -48,8 +48,10 @@ impl<'a> ConfigViewerWidget<'a> {
                     );
                 });
         }
+
+        Block::new().bg(colors::BLACK).render(right_chunk, buf);
+
         if let Some(filter) = self.app.selected_filter() {
-            Block::new().bg(colors::BLACK).render(right_chunk, buf);
 
             (right_chunk.y..right_chunk.bottom())
                 .zip(filter.filters())
@@ -76,7 +78,7 @@ struct ConfigLineWidget<'a> {
 
 impl ConfigLineWidget<'_> {
     pub fn render(self, area: Rect, buf: &mut Buffer, _: &mut MouseHandler) {
-        let mut v = vec![Span::raw(self.ty.to_gutter(" - ")).fg(colors::CONFIG_ACCENT)];
+        let mut v = vec![Span::raw(self.ty.to_gutter()).fg(colors::CONFIG_ACCENT)];
 
         v.push(Span::raw(self.name.unwrap_or("Untitled Filter Set")).fg(colors::WHITE));
 

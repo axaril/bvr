@@ -456,6 +456,11 @@ impl App {
                         .demux_mut(self.app.viewer.linked_filters, |target| {
                             target.import_user_filters(&export);
                         });
+
+                    self.app.viewer.status.msg(format!(
+                        "filter load: loaded filters from {}",
+                        export.name().as_deref().unwrap_or("Unnamed Filter Set")
+                    ));
                 }
                 ConfigAction::RemoveSelectedFilter => {
                     let selected_filters = self.app.viewer.config.selected_filter_indices();
@@ -569,7 +574,9 @@ impl App {
                         }
                     }
 
-                    if !self.app.viewer.prompt.advance_completion() {
+                    if let Some(cycle) = self.app.viewer.prompt.advance_completion() {
+                        self.app.viewer.status.msg(cycle.candidates.join("  "));
+                    } else {
                         // Fresh completion — compute candidates from the current buffer.
                         let candidates = self.commands.complete_command(&buf);
                         match candidates.as_slice() {

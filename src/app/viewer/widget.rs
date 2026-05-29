@@ -1,15 +1,11 @@
 use crate::app::common::gutter::GutterType;
-use crate::{app::actions::VisualAction, colors, cursor::Cursor, direction::Direction};
-use crate::{
-    app::{
-        actions::{Action, NormalAction},
-        control::ViewDelta,
-        mouse::MouseHandler,
-        viewer::{instance::Instance, virtual_view::CachedLine},
-    },
-    cursor::CursorAnchor,
+use crate::app::{
+    actions::{Action, NormalAction},
+    control::ViewDelta,
+    mouse::MouseHandler,
+    viewer::{instance::Instance, virtual_view::CachedLine},
 };
-use bitflags::bitflags;
+use crate::{app::actions::VisualAction, colors, direction::Direction};
 use crossterm::event::MouseEventKind;
 use ratatui::prelude::*;
 use regex::bytes::Regex;
@@ -140,7 +136,7 @@ impl ViewerLineWidget<'_> {
         if let Some(type_chunk) = cursor_chunk
             && self.parent.show_selection
         {
-            Span::raw(self.ty.to_gutter("   "))
+            Span::raw(self.ty.to_gutter())
                 .fg(colors::SELECT_ACCENT)
                 .render(type_chunk, buf);
         }

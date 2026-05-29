@@ -51,7 +51,7 @@ impl GutterType {
         }
     }
 
-    pub fn to_gutter(self, empty: &'static str) -> &'static str {
+    pub const fn to_gutter(self) -> &'static str {
         if self.contains(GutterType::Origin) {
             if self.contains(GutterType::OriginStart) {
                 " ┍ "
@@ -67,7 +67,7 @@ impl GutterType {
         } else if self.contains(GutterType::Within) {
             " │ "
         } else {
-            empty
+            "   "
         }
     }
 }
