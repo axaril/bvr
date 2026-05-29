@@ -508,23 +508,18 @@ mod tests {
         let data = [
             0,
             1,
-
             (1 << 8) - 1,
             1 << 8,
             (1 << 8) + 1,
-
             (1 << 16) - 1,
             1 << 16,
             (1 << 16) + 1,
-
             (1 << 32) - 1,
             1 << 32,
             (1 << 32) + 1,
-
             (1 << 33) - 1,
             1 << 33,
             (1 << 33) + 1,
-
             (1 << 63) - 1,
             1 << 63,
         ];
@@ -537,7 +532,6 @@ mod tests {
             assert_eq!(u8i.data_of_line(i).unwrap(), line_data);
             assert_eq!(u16i.data_of_line(i).unwrap(), line_data);
             assert_eq!(u32i.data_of_line(i).unwrap(), line_data);
-
         }
 
         for (i, &[line_data, _]) in data.array_windows::<2>().enumerate() {

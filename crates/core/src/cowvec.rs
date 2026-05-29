@@ -291,7 +291,13 @@ impl<T> CowVec<T> {
             condvar: Condvar::new(),
             condvar_lock: Mutex::new(()),
         });
-        (buf.clone(), CowVecWriter { target: buf, last_notified: 0 })
+        (
+            buf.clone(),
+            CowVecWriter {
+                target: buf,
+                last_notified: 0,
+            },
+        )
     }
 
     /// Constructs a new, empty `CowVec<T>` with at least the specified capacity.
@@ -309,7 +315,13 @@ impl<T> CowVec<T> {
             condvar: Condvar::new(),
             condvar_lock: Mutex::new(()),
         });
-        (buf.clone(), CowVecWriter { target: buf, last_notified: 0 })
+        (
+            buf.clone(),
+            CowVecWriter {
+                target: buf,
+                last_notified: 0,
+            },
+        )
     }
 
     /// Constructs a new, empty `CowVec<T>`.

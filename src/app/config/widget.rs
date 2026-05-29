@@ -1,6 +1,8 @@
 use super::super::mouse::MouseHandler;
-use crate::{app::common::Panel, colors, cursor::Cursor};
-use bitflags::bitflags;
+use crate::{
+    app::common::{Panel, gutter::GutterType},
+    colors,
+};
 use ratatui::{prelude::*, widgets::*};
 
 pub struct ConfigViewerWidget<'a> {
@@ -37,26 +39,7 @@ impl<'a> ConfigViewerWidget<'a> {
                 .for_each(|(y, (index, filter))| {
                     ConfigLineWidget {
                         name: filter.name(),
-                        ty: match cursor_state {
-                            Cursor::Singleton(i) => {
-                                if index == i {
-                                    ConfigType::Origin
-                                } else {
-                                    ConfigType::None
-                                }
-                            }
-                            Cursor::Selection(start, end, _) => {
-                                if !(start..=end).contains(&index) {
-                                    ConfigType::None
-                                } else if index == start {
-                                    ConfigType::Origin | ConfigType::OriginStart
-                                } else if index == end {
-                                    ConfigType::Origin | ConfigType::OriginEnd
-                                } else {
-                                    ConfigType::Within
-                                }
-                            }
-                        },
+                        ty: GutterType::map_cursor_state(cursor_state, index),
                     }
                     .render(
                         Rect::new(left_chunk.x, y, left_chunk.width, 1),
@@ -88,38 +71,12 @@ impl<'a> ConfigViewerWidget<'a> {
 
 struct ConfigLineWidget<'a> {
     name: Option<&'a str>,
-    ty: ConfigType,
-}
-
-bitflags! {
-    struct ConfigType: u8 {
-        const None = 0;
-        const Origin = 1 << 1;
-        const OriginStart = 1 << 2;
-        const OriginEnd = 1 << 3;
-        const Within = 1 << 4;
-    }
+    ty: GutterType,
 }
 
 impl ConfigLineWidget<'_> {
-    fn gutter_selection(&self) -> &'static str {
-        if self.ty.contains(ConfigType::Origin) {
-            if self.ty.contains(ConfigType::OriginStart) {
-                " ┌ "
-            } else if self.ty.contains(ConfigType::OriginEnd) {
-                " └ "
-            } else {
-                " ▶ "
-            }
-        } else if self.ty.contains(ConfigType::Within) {
-            " │ "
-        } else {
-            " - "
-        }
-    }
-
     pub fn render(self, area: Rect, buf: &mut Buffer, _: &mut MouseHandler) {
-        let mut v = vec![Span::raw(self.gutter_selection()).fg(colors::CONFIG_ACCENT)];
+        let mut v = vec![Span::raw(self.ty.to_gutter(" - ")).fg(colors::CONFIG_ACCENT)];
 
         v.push(Span::raw(self.name.unwrap_or("Untitled Filter Set")).fg(colors::WHITE));
 

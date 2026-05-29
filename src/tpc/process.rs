@@ -24,12 +24,16 @@ enum CommandErrorKind {
 impl CommandError {
     /// Create an error from an I/O error.
     pub(crate) fn io(ioerr: io::Error) -> CommandError {
-        CommandError { kind: CommandErrorKind::Io(ioerr) }
+        CommandError {
+            kind: CommandErrorKind::Io(ioerr),
+        }
     }
 
     /// Create an error from the contents of stderr (which may be empty).
     pub(crate) fn stderr(bytes: Vec<u8>) -> CommandError {
-        CommandError { kind: CommandErrorKind::Stderr(bytes) }
+        CommandError {
+            kind: CommandErrorKind::Stderr(bytes),
+        }
     }
 
     /// Returns true if and only if this error has empty data from stderr.
@@ -53,12 +57,7 @@ impl std::fmt::Display for CommandError {
                     write!(f, "<stderr is empty>")
                 } else {
                     let div = "-".repeat(79);
-                    write!(
-                        f,
-                        "\n{div}\n{msg}\n{div}",
-                        div = div,
-                        msg = msg.trim()
-                    )
+                    write!(f, "\n{div}\n{msg}\n{div}", div = div, msg = msg.trim())
                 }
             }
         }
@@ -67,7 +66,9 @@ impl std::fmt::Display for CommandError {
 
 impl From<io::Error> for CommandError {
     fn from(ioerr: io::Error) -> CommandError {
-        CommandError { kind: CommandErrorKind::Io(ioerr) }
+        CommandError {
+            kind: CommandErrorKind::Io(ioerr),
+        }
     }
 }
 
@@ -75,9 +76,7 @@ impl From<CommandError> for io::Error {
     fn from(cmderr: CommandError) -> io::Error {
         match cmderr.kind {
             CommandErrorKind::Io(ioerr) => ioerr,
-            CommandErrorKind::Stderr(_) => {
-                io::Error::new(io::ErrorKind::Other, cmderr)
-            }
+            CommandErrorKind::Stderr(_) => io::Error::new(io::ErrorKind::Other, cmderr),
         }
     }
 }
@@ -104,10 +103,7 @@ impl CommandReaderBuilder {
     ///
     /// If there was a problem spawning the given command, then its error is
     /// returned.
-    pub fn build(
-        &self,
-        command: &mut process::Command,
-    ) -> Result<CommandReader, CommandError> {
+    pub fn build(&self, command: &mut process::Command) -> Result<CommandReader, CommandError> {
         let mut child = command
             .stdout(process::Stdio::piped())
             .stderr(process::Stdio::piped())
@@ -117,7 +113,11 @@ impl CommandReaderBuilder {
         } else {
             StderrReader::sync(child.stderr.take().unwrap())
         };
-        Ok(CommandReader { child, stderr, eof: false })
+        Ok(CommandReader {
+            child,
+            stderr,
+            eof: false,
+        })
     }
 
     /// When enabled, the reader will asynchronously read the contents of the
@@ -195,9 +195,7 @@ impl CommandReader {
     ///
     /// If the caller requires additional configuration for the reader
     /// returned, then use [`CommandReaderBuilder`].
-    pub fn new(
-        cmd: &mut process::Command,
-    ) -> Result<CommandReader, CommandError> {
+    pub fn new(cmd: &mut process::Command) -> Result<CommandReader, CommandError> {
         CommandReaderBuilder::new().build(cmd)
     }
 
@@ -279,8 +277,7 @@ enum StderrReader {
 impl StderrReader {
     /// Create a reader for stderr that reads contents asynchronously.
     fn r#async(mut stderr: process::ChildStderr) -> StderrReader {
-        let handle =
-            std::thread::spawn(move || stderr_to_command_error(&mut stderr));
+        let handle = std::thread::spawn(move || stderr_to_command_error(&mut stderr));
         StderrReader::Async(Some(handle))
     }
 
@@ -301,9 +298,7 @@ impl StderrReader {
                     .expect("read_to_end cannot be called more than once");
                 handle.join().expect("stderr reading thread does not panic")
             }
-            StderrReader::Sync(ref mut stderr) => {
-                stderr_to_command_error(stderr)
-            }
+            StderrReader::Sync(ref mut stderr) => stderr_to_command_error(stderr),
         }
     }
 }

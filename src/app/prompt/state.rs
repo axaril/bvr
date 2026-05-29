@@ -1,5 +1,5 @@
 use crate::{
-    cursor::{Cursor, CursorState, SelectionOrigin},
+    cursor::{Cursor, CursorAnchor, CursorState},
     direction::Direction,
     view_bounds::ViewBounds,
 };
@@ -78,8 +78,8 @@ impl PromptApp {
         self.bounds.fit(1, width);
         match self.cursor.state() {
             Cursor::Singleton(i)
-            | Cursor::Selection(i, _, SelectionOrigin::Left)
-            | Cursor::Selection(_, i, SelectionOrigin::Right) => {
+            | Cursor::Selection(i, _, CursorAnchor::End)
+            | Cursor::Selection(_, i, CursorAnchor::Start) => {
                 self.bounds.jump_horizontally_to(i);
             }
         }

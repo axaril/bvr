@@ -1,6 +1,6 @@
 use crate::{
     app::{control::ViewDelta, filters::FilterExportSet},
-    cursor::{Cursor, CursorState, SelectionOrigin},
+    cursor::{Cursor, CursorAnchor, CursorState},
     direction::Direction,
     view_bounds::ViewBounds,
 };
@@ -92,8 +92,8 @@ impl FilterConfigState {
         self.cursor.clamp(self.filters().len().saturating_sub(1));
         let i = match self.cursor.state() {
             Cursor::Singleton(i)
-            | Cursor::Selection(i, _, SelectionOrigin::Left)
-            | Cursor::Selection(_, i, SelectionOrigin::Right) => i,
+            | Cursor::Selection(i, _, CursorAnchor::End)
+            | Cursor::Selection(_, i, CursorAnchor::Start) => i,
         };
         self.bounds.jump_vertically_to(i);
     }

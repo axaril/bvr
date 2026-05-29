@@ -7,7 +7,7 @@ use crate::{
         highlight,
     },
     colors,
-    cursor::{Cursor, SelectionOrigin},
+    cursor::{Cursor, CursorAnchor},
 };
 
 pub struct PromptWidget<'a> {
@@ -71,12 +71,10 @@ impl<'a> PromptWidget<'a> {
 
         let i = match cursor {
             Cursor::Singleton(i)
-            | Cursor::Selection(_, i, SelectionOrigin::Right)
-            | Cursor::Selection(i, _, SelectionOrigin::Left) => cmd_buf
-                .chars()
-                .take(i)
-                .map(|c| c.len_utf8())
-                .sum::<usize>(),
+            | Cursor::Selection(_, i, CursorAnchor::Start)
+            | Cursor::Selection(i, _, CursorAnchor::End) => {
+                cmd_buf.chars().take(i).map(|c| c.len_utf8()).sum::<usize>()
+            }
         };
         f.set_cursor_position((data_area.x + i as u16, data_area.y));
     }

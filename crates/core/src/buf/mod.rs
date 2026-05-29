@@ -86,7 +86,7 @@ impl TempFileState {
             state @ TempFileState::Persisted(..) => {
                 *self = state;
                 return Err(crate::err::Error::AlreadyPersisted);
-            },
+            }
         };
         Ok(())
     }

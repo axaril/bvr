@@ -1,7 +1,10 @@
 use super::storage_dir_create;
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
-use std::{cell::OnceCell, path::{Path, PathBuf}};
+use std::{
+    cell::OnceCell,
+    path::{Path, PathBuf},
+};
 
 const APP_ID: &str = "bvr";
 
@@ -13,9 +16,7 @@ pub struct ConfigBase<T> {
 impl<T> ConfigBase<T> {
     pub fn new(path: &Path) -> Self {
         Self {
-            path: storage_dir_create(APP_ID)
-                .map(|base| base.join(path))
-                .ok(),
+            path: storage_dir_create(APP_ID).map(|base| base.join(path)).ok(),
             state: OnceCell::new(),
         }
     }

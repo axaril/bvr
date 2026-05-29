@@ -2,8 +2,14 @@ use super::super::{
     actions::{Action, FilterAction},
     mouse::MouseHandler,
 };
-use crate::{app::{common::Panel, filters::Filter, highlight}, colors, cursor::Cursor};
-use bitflags::bitflags;
+use crate::{
+    app::{
+        common::{Panel, gutter::GutterType},
+        filters::Filter,
+        highlight,
+    },
+    colors,
+};
 use crossterm::event::MouseEventKind;
 use ratatui::prelude::*;
 
@@ -34,30 +40,8 @@ impl FilterViewerWidget<'_> {
                     view_index: self.view_index,
                     index,
                     filter,
-                    ty: match cursor_state {
-                        Cursor::Singleton(i) => {
-                            if index == i {
-                                FilterType::Origin
-                            } else {
-                                FilterType::None
-                            }
-                        }
-                        Cursor::Selection(start, end, _) => {
-                            if !(start..=end).contains(&index) {
-                                FilterType::None
-                            } else if index == start {
-                                FilterType::Origin | FilterType::OriginStart
-                            } else if index == end {
-                                FilterType::Origin | FilterType::OriginEnd
-                            } else {
-                                FilterType::Within
-                            }
-                        }
-                    } | if filter.is_enabled() {
-                        FilterType::Enabled
-                    } else {
-                        FilterType::None
-                    },
+                    ty: GutterType::map_cursor_state(cursor_state, index),
+                    enabled: filter.is_enabled(),
                 }
                 .render(Rect::new(area.x, y, area.width, 1), buf, handle);
             });
@@ -68,48 +52,17 @@ struct FilterLineWidget<'a> {
     view_index: usize,
     index: usize,
     filter: &'a Filter,
-    ty: FilterType,
-}
-
-bitflags! {
-    struct FilterType: u8 {
-        const None = 0;
-        const Enabled = 1 << 0;
-        const Origin = 1 << 1;
-        const OriginStart = 1 << 2;
-        const OriginEnd = 1 << 3;
-        const Within = 1 << 4;
-    }
+    ty: GutterType,
+    enabled: bool,
 }
 
 impl FilterLineWidget<'_> {
-    fn gutter_selection(&self) -> &'static str {
-        if self.ty.contains(FilterType::Origin) {
-            if self.ty.contains(FilterType::OriginStart) {
-                " ┌"
-            } else if self.ty.contains(FilterType::OriginEnd) {
-                " └"
-            } else {
-                " ▶"
-            }
-        } else if self.ty.contains(FilterType::Within) {
-            " │"
-        } else {
-            "  "
-        }
-    }
-
     pub fn render(self, area: Rect, buf: &mut Buffer, handle: &mut MouseHandler) {
         let color = self.filter.color();
 
         let mut v = vec![
-            Span::raw(self.gutter_selection()).fg(colors::FILTER_ACCENT),
-            Span::raw(if self.ty.contains(FilterType::Enabled) {
-                " ● "
-            } else {
-                " ◯ "
-            })
-            .fg(color),
+            Span::raw(self.ty.to_gutter(" - ")).fg(colors::FILTER_ACCENT),
+            Span::raw(if self.enabled { "● " } else { "◯ " }).fg(color),
         ];
 
         if self.filter.mask().regex().is_some() && !self.filter.mask().escaped() {

@@ -40,7 +40,10 @@ impl Default for DecompressionMatcherBuilder {
 impl DecompressionMatcherBuilder {
     /// Create a new builder for configuring a decompression matcher.
     pub fn new() -> DecompressionMatcherBuilder {
-        DecompressionMatcherBuilder { commands: vec![], defaults: true }
+        DecompressionMatcherBuilder {
+            commands: vec![],
+            defaults: true,
+        }
     }
 
     /// Build a matcher for determining how to decompress files.
@@ -56,15 +59,14 @@ impl DecompressionMatcherBuilder {
         let mut glob_builder = GlobSetBuilder::new();
         let mut commands = vec![];
         for decomp_cmd in defaults.iter().chain(&self.commands) {
-            let glob = Glob::new(&decomp_cmd.glob).map_err(|err| {
-                CommandError::io(io::Error::new(io::ErrorKind::Other, err))
-            })?;
+            let glob = Glob::new(&decomp_cmd.glob)
+                .map_err(|err| CommandError::io(io::Error::new(io::ErrorKind::Other, err)))?;
             glob_builder.add(glob);
             commands.push(decomp_cmd.clone());
         }
-        let globs = glob_builder.build().map_err(|err| {
-            CommandError::io(io::Error::new(io::ErrorKind::Other, err))
-        })?;
+        let globs = glob_builder
+            .build()
+            .map_err(|err| CommandError::io(io::Error::new(io::ErrorKind::Other, err)))?;
         Ok(DecompressionMatcher { globs, commands })
     }
 
@@ -135,8 +137,10 @@ impl DecompressionMatcherBuilder {
     {
         let glob = glob.to_string();
         let bin = try_resolve_binary(Path::new(program.as_ref()))?;
-        let args =
-            args.into_iter().map(|a| a.as_ref().to_os_string()).collect();
+        let args = args
+            .into_iter()
+            .map(|a| a.as_ref().to_os_string())
+            .collect();
         self.commands.push(DecompressionCommand { glob, bin, args });
         Ok(self)
     }
@@ -207,19 +211,19 @@ impl DecompressionReaderBuilder {
     }
 
     /// Patched code
-    pub fn build_must_decompress<P: AsRef<Path>>(
-        &self,
-        path: P,
-    ) -> Option<DecompressionReader> {
+    pub fn build_must_decompress<P: AsRef<Path>>(&self, path: P) -> Option<DecompressionReader> {
         let path = path.as_ref();
         let Some(mut cmd) = self.matcher.command(path) else {
             return None;
         };
         cmd.arg(path);
 
-        self.command_builder.build(&mut cmd).map(|cmd_reader| {
-            DecompressionReader { rdr: Ok(cmd_reader) }
-        }).ok()
+        self.command_builder
+            .build(&mut cmd)
+            .map(|cmd_reader| DecompressionReader {
+                rdr: Ok(cmd_reader),
+            })
+            .ok()
     }
 
     /// Build a new streaming reader for decompressing data.
@@ -234,10 +238,7 @@ impl DecompressionReaderBuilder {
     /// If the given file path could not be matched with a decompression
     /// strategy, then a passthru reader is returned that does no
     /// decompression.
-    pub fn build<P: AsRef<Path>>(
-        &self,
-        path: P,
-    ) -> Result<DecompressionReader, CommandError> {
+    pub fn build<P: AsRef<Path>>(&self, path: P) -> Result<DecompressionReader, CommandError> {
         let path = path.as_ref();
         let Some(mut cmd) = self.matcher.command(path) else {
             return DecompressionReader::new_passthru(path);
@@ -245,7 +246,9 @@ impl DecompressionReaderBuilder {
         cmd.arg(path);
 
         match self.command_builder.build(&mut cmd) {
-            Ok(cmd_reader) => Ok(DecompressionReader { rdr: Ok(cmd_reader) }),
+            Ok(cmd_reader) => Ok(DecompressionReader {
+                rdr: Ok(cmd_reader),
+            }),
             Err(_) => {
                 // log::debug!(
                 //     "{}: error spawning command '{:?}': {} \
@@ -264,10 +267,7 @@ impl DecompressionReaderBuilder {
     ///
     /// A set of sensible rules is enabled by default. Setting this will
     /// completely replace the current rules.
-    pub fn matcher(
-        &mut self,
-        matcher: DecompressionMatcher,
-    ) -> &mut DecompressionReaderBuilder {
+    pub fn matcher(&mut self, matcher: DecompressionMatcher) -> &mut DecompressionReaderBuilder {
         self.matcher = matcher;
         self
     }
@@ -289,10 +289,7 @@ impl DecompressionReaderBuilder {
     /// buffer and deadlock.
     ///
     /// This is enabled by default.
-    pub fn async_stderr(
-        &mut self,
-        yes: bool,
-    ) -> &mut DecompressionReaderBuilder {
+    pub fn async_stderr(&mut self, yes: bool) -> &mut DecompressionReaderBuilder {
         self.command_builder.async_stderr(yes);
         self
     }
@@ -365,15 +362,11 @@ impl DecompressionReader {
     ///
     /// When creating readers for many paths. it is better to use the builder
     /// since it will amortize the cost of constructing the matcher.
-    pub fn new<P: AsRef<Path>>(
-        path: P,
-    ) -> Result<DecompressionReader, CommandError> {
+    pub fn new<P: AsRef<Path>>(path: P) -> Result<DecompressionReader, CommandError> {
         DecompressionReaderBuilder::new().build(path)
     }
 
-    pub fn new_must_decompress<P: AsRef<Path>>(
-        path: P,
-    ) -> Option<DecompressionReader> {
+    pub fn new_must_decompress<P: AsRef<Path>>(path: P) -> Option<DecompressionReader> {
         DecompressionReaderBuilder::new().build_must_decompress(path)
     }
 
@@ -439,9 +432,7 @@ impl io::Read for DecompressionReader {
 /// # Platform behavior
 ///
 /// On non-Windows, this is a no-op.
-pub fn resolve_binary<P: AsRef<Path>>(
-    prog: P,
-) -> Result<PathBuf, CommandError> {
+pub fn resolve_binary<P: AsRef<Path>>(prog: P) -> Result<PathBuf, CommandError> {
     if !cfg!(windows) {
         return Ok(prog.as_ref().to_path_buf());
     }
@@ -467,13 +458,13 @@ pub fn resolve_binary<P: AsRef<Path>>(
 ///
 /// If `check_exists` is false or the path is already an absolute path this
 /// will return immediately.
-fn try_resolve_binary<P: AsRef<Path>>(
-    prog: P,
-) -> Result<PathBuf, CommandError> {
+fn try_resolve_binary<P: AsRef<Path>>(prog: P) -> Result<PathBuf, CommandError> {
     use std::env;
 
     fn is_exe(path: &Path) -> bool {
-        let Ok(md) = path.metadata() else { return false };
+        let Ok(md) = path.metadata() else {
+            return false;
+        };
         !md.is_dir()
     }
 
@@ -483,10 +474,7 @@ fn try_resolve_binary<P: AsRef<Path>>(
     }
     let Some(syspaths) = env::var_os("PATH") else {
         let msg = "system PATH environment variable not found";
-        return Err(CommandError::io(io::Error::new(
-            io::ErrorKind::Other,
-            msg,
-        )));
+        return Err(CommandError::io(io::Error::new(io::ErrorKind::Other, msg)));
     };
     for syspath in env::split_paths(&syspaths) {
         if syspath.as_os_str().is_empty() {

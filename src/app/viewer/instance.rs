@@ -7,7 +7,7 @@ use crate::{
         filters::{self, Filter, FilterExportSet},
     },
     colors::ColorSelector,
-    cursor::{Cursor, CursorState, SelectionOrigin},
+    cursor::{Cursor, CursorAnchor, CursorState},
     direction::Direction,
     view_bounds::ViewBounds,
 };
@@ -123,8 +123,8 @@ impl Instance {
     pub fn move_selected_into_view(&mut self) {
         let current = match self.cursor.state() {
             Cursor::Singleton(i)
-            | Cursor::Selection(i, _, SelectionOrigin::Left)
-            | Cursor::Selection(_, i, SelectionOrigin::Right) => i,
+            | Cursor::Selection(i, _, CursorAnchor::End)
+            | Cursor::Selection(_, i, CursorAnchor::Start) => i,
         };
         if current < self.view.view_bounds().top() {
             self.cursor.place(self.view.view_bounds().top());
@@ -199,8 +199,8 @@ impl Instance {
             .clamp(self.visible_line_count().saturating_sub(1));
         let i = match self.cursor.state() {
             Cursor::Singleton(i)
-            | Cursor::Selection(i, _, SelectionOrigin::Left)
-            | Cursor::Selection(_, i, SelectionOrigin::Right) => i,
+            | Cursor::Selection(i, _, CursorAnchor::End)
+            | Cursor::Selection(_, i, CursorAnchor::Start) => i,
         };
         self.jump_vertically_to(i);
     }

@@ -55,10 +55,7 @@ impl<'a> Highlighter<'a> {
     }
 
     fn scan_bytes_until(&self, pred: impl FnMut(u8) -> bool) -> Option<usize> {
-        self.input.as_bytes()
-            .iter()
-            .copied()
-            .position(pred)
+        self.input.as_bytes().iter().copied().position(pred)
     }
 
     fn eat_and_color(&mut self, len: usize) -> ColorableSpan<'_, 'a> {

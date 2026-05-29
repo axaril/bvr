@@ -1,10 +1,14 @@
-use crate::app::{
-    actions::{Action, NormalAction},
-    control::ViewDelta,
-    mouse::MouseHandler,
-    viewer::{instance::Instance, virtual_view::CachedLine},
-};
+use crate::app::common::gutter::GutterType;
 use crate::{app::actions::VisualAction, colors, cursor::Cursor, direction::Direction};
+use crate::{
+    app::{
+        actions::{Action, NormalAction},
+        control::ViewDelta,
+        mouse::MouseHandler,
+        viewer::{instance::Instance, virtual_view::CachedLine},
+    },
+    cursor::CursorAnchor,
+};
 use bitflags::bitflags;
 use crossterm::event::MouseEventKind;
 use ratatui::prelude::*;
@@ -18,17 +22,6 @@ pub struct ViewWidget<'a> {
     gutter: Option<u16>,
     regex: Option<(Color, &'a Regex)>,
     left: usize,
-}
-
-bitflags! {
-    struct LineType: u8 {
-        const None = 0;
-        const Origin = 1 << 0;
-        const OriginStart = 1 << 1;
-        const OriginEnd = 1 << 2;
-        const Within = 1 << 3;
-        const Bookmarked = 1 << 4;
-    }
 }
 
 impl<'a> ViewWidget<'a> {
@@ -65,35 +58,9 @@ impl<'a> ViewWidget<'a> {
                 ViewerLineWidget {
                     parent: &self,
                     line_data,
-                    ty: if let Some(line) = line_data {
-                        match cursor_state {
-                            Cursor::Singleton(i) => {
-                                if line.index == i {
-                                    LineType::Origin
-                                } else {
-                                    LineType::None
-                                }
-                            }
-                            Cursor::Selection(start, end, _) => {
-                                if !(start..=end).contains(&line.index) {
-                                    LineType::None
-                                } else if line.index == start {
-                                    LineType::Origin | LineType::OriginStart
-                                } else if line.index == end {
-                                    LineType::Origin | LineType::OriginEnd
-                                } else {
-                                    LineType::Within
-                                }
-                            }
-                        }
-                        .union(if line.bookmarked {
-                            LineType::Bookmarked
-                        } else {
-                            LineType::None
-                        })
-                    } else {
-                        LineType::None
-                    },
+                    ty: line_data
+                        .map(|line| GutterType::map_cursor_state(cursor_state, line.index))
+                        .unwrap_or_default(),
                 }
                 .render(Rect::new(area.x, y, area.width, 1), buf, handle);
             });
@@ -115,26 +82,10 @@ struct ViewerLineWidget<'a> {
     parent: &'a ViewWidget<'a>,
 
     line_data: Option<&'a CachedLine>,
-    ty: LineType,
+    ty: GutterType,
 }
 
 impl ViewerLineWidget<'_> {
-    fn gutter_selection(&self) -> &'static str {
-        if self.ty.contains(LineType::Origin) {
-            if self.ty.contains(LineType::OriginStart) {
-                "┌ "
-            } else if self.ty.contains(LineType::OriginEnd) {
-                "└"
-            } else {
-                "▶"
-            }
-        } else if self.ty.contains(LineType::Within) {
-            "│"
-        } else {
-            ""
-        }
-    }
-
     fn split_line(&self, area: Rect) -> (Option<Rect>, Option<Rect>, Rect) {
         const SPECIAL_SIZE: u16 = 3;
 
@@ -147,8 +98,8 @@ impl ViewerLineWidget<'_> {
         gutter_chunk.width = gutter_size;
 
         let mut cursor_chunk = area;
-        cursor_chunk.x += gutter_size + 1;
-        cursor_chunk.width = 1;
+        cursor_chunk.x += gutter_size;
+        cursor_chunk.width = 3;
 
         let mut data_chunk = area;
         data_chunk.x += gutter_size + SPECIAL_SIZE;
@@ -176,7 +127,7 @@ impl ViewerLineWidget<'_> {
             let mut itoa_buf = itoa::Buffer::new();
             let ln_str = itoa_buf.format(line.line_number + 1);
             let ln = Line::raw(ln_str).alignment(Alignment::Right).fg(
-                if self.ty.contains(LineType::Bookmarked) {
+                if self.line_data.map(|l| l.bookmarked).unwrap_or(false) {
                     colors::SELECT_ACCENT
                 } else {
                     colors::GUTTER_TEXT
@@ -186,8 +137,10 @@ impl ViewerLineWidget<'_> {
             ln.render(gutter_chunk, buf);
         }
 
-        if let Some(type_chunk) = cursor_chunk {
-            Span::raw(self.gutter_selection())
+        if let Some(type_chunk) = cursor_chunk
+            && self.parent.show_selection
+        {
+            Span::raw(self.ty.to_gutter("   "))
                 .fg(colors::SELECT_ACCENT)
                 .render(type_chunk, buf);
         }
@@ -223,7 +176,7 @@ impl ViewerLineWidget<'_> {
         };
 
         line_widget.style.fg = Some(line.color);
-        if self.ty.contains(LineType::Bookmarked) {
+        if self.line_data.map(|l| l.bookmarked).unwrap_or(false) {
             line_widget.style.bg = Some(colors::SELECT_ACCENT);
         }
 

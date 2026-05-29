@@ -40,9 +40,7 @@ impl<'a> RegexHighlighter<'a> {
     fn flush_lit(&mut self) {
         if let Some((s, lit_len)) = self.lit_buf.take() {
             if lit_len > 0 {
-                self.base
-                    .spans
-                    .push(Span::raw(&s[..lit_len]));
+                self.base.spans.push(Span::raw(&s[..lit_len]));
             }
         }
     }

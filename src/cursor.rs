@@ -1,14 +1,14 @@
-#[derive(Clone, Copy)]
-pub enum SelectionOrigin {
-    Right,
-    Left,
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum CursorAnchor {
+    Start,
+    End,
 }
 
-impl SelectionOrigin {
+impl CursorAnchor {
     pub fn flip(self) -> Self {
         match self {
-            Self::Right => Self::Left,
-            Self::Left => Self::Right,
+            Self::Start => Self::End,
+            Self::End => Self::Start,
         }
     }
 }
@@ -16,11 +16,11 @@ impl SelectionOrigin {
 #[derive(Clone, Copy)]
 pub enum Cursor {
     Singleton(usize),
-    Selection(usize, usize, SelectionOrigin),
+    Selection(usize, usize, CursorAnchor),
 }
 
 impl Cursor {
-    pub fn new_range(start: usize, end: usize, dir: SelectionOrigin) -> Self {
+    pub fn new_range(start: usize, end: usize, dir: CursorAnchor) -> Self {
         use std::cmp::Ordering;
         match start.cmp(&end) {
             Ordering::Less => Self::Selection(start, end, dir),
@@ -73,14 +73,14 @@ impl CursorState {
         self.state = match self.state {
             Cursor::Singleton(i) => {
                 if select && i > 0 {
-                    Cursor::Selection(transform(i), i, SelectionOrigin::Left)
+                    Cursor::Selection(transform(i), i, CursorAnchor::End)
                 } else {
                     Cursor::Singleton(transform(i))
                 }
             }
             Cursor::Selection(start, end, dir) if select => match dir {
-                SelectionOrigin::Right => Cursor::new_range(start, transform(end), dir),
-                SelectionOrigin::Left => Cursor::new_range(transform(start), end, dir),
+                CursorAnchor::Start => Cursor::new_range(start, transform(end), dir),
+                CursorAnchor::End => Cursor::new_range(transform(start), end, dir),
             },
             Cursor::Selection(start, _, _) => Cursor::Singleton(start),
         }
@@ -90,14 +90,14 @@ impl CursorState {
         self.state = match self.state {
             Cursor::Singleton(i) => {
                 if select {
-                    Cursor::new_range(i, transform(i), SelectionOrigin::Right)
+                    Cursor::new_range(i, transform(i), CursorAnchor::Start)
                 } else {
                     Cursor::Singleton(transform(i))
                 }
             }
             Cursor::Selection(start, end, dir) if select => match dir {
-                SelectionOrigin::Right => Cursor::new_range(start, transform(end), dir),
-                SelectionOrigin::Left => Cursor::new_range(transform(start), end, dir),
+                CursorAnchor::Start => Cursor::new_range(start, transform(end), dir),
+                CursorAnchor::End => Cursor::new_range(transform(start), end, dir),
             },
             Cursor::Selection(_, end, _) => Cursor::Singleton(end),
         }
