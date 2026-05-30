@@ -3,8 +3,8 @@ use std::{
     ops::Deref,
     ptr::NonNull,
     sync::{
-        atomic::{AtomicBool, AtomicUsize, Ordering},
-        Arc, Condvar, Mutex,
+        atomic::{AtomicUsize, Ordering},
+        Arc, Condvar, Mutex, OnceLock,
     },
 };
 
@@ -115,6 +115,7 @@ impl<T> Drop for RawBuf<T> {
 /// An exclusive writer to a `CowVec<T>`.
 pub struct CowVecWriter<T> {
     target: Arc<CowVec<T>>,
+    buf: Arc<RawBuf<T>>,
     last_notified: usize,
 }
 
@@ -126,38 +127,34 @@ where
     ///
     /// This operation is O(1) amortized.
     pub fn push(&mut self, elem: T) {
-        let buf = self.target.buf.load();
-        let len = buf.len.load(Ordering::Relaxed);
-        let cap = buf.cap;
+        let len = self.len();
 
-        let buf = if len == cap {
-            &self.grow(&buf, len, None)
-        } else {
-            &buf
-        };
+        if len == self.buf.cap {
+            self.grow(len, None);
+        }
 
-        unsafe { std::ptr::write(buf.ptr.as_ptr().add(len), elem) }
-        buf.len.store(len + 1, Ordering::Release);
+        unsafe { std::ptr::write(self.buf.as_ptr().add(len), elem) }
+        self.buf.len.store(len + 1, Ordering::Release);
 
         self.notify(1);
     }
 
     /// Appends all elements from a slice to the back of this collection.
     pub fn extend_from_slice(&mut self, elems: &[T]) {
-        let buf = self.target.buf.load();
-        let len = buf.len.load(Ordering::Relaxed);
-        let cap = buf.cap;
+        let len = self.len();
 
-        let buf = if len + elems.len() > cap {
-            &self.grow(&buf, len, Some((len + elems.len()).max(cap * 2)))
-        } else {
-            &buf
-        };
+        if len + elems.len() > self.buf.cap {
+            self.grow(len, Some((len + elems.len()).max(self.buf.cap * 2)));
+        }
 
         unsafe {
-            std::ptr::copy_nonoverlapping(elems.as_ptr(), buf.ptr.as_ptr().add(len), elems.len());
+            std::ptr::copy_nonoverlapping(
+                elems.as_ptr(),
+                self.buf.ptr.as_ptr().add(len),
+                elems.len(),
+            );
         }
-        buf.len.store(len + elems.len(), Ordering::Release);
+        self.buf.len.store(len + elems.len(), Ordering::Release);
 
         self.notify(elems.len());
     }
@@ -174,43 +171,7 @@ where
     }
 
     pub fn len(&self) -> usize {
-        self.target.buf.load().len.load(Ordering::Acquire)
-    }
-
-    /// Inserts an element at the given index, shifting all elements after it to the right.
-    ///
-    /// This operation is O(n) where n is the number of elements to the right of the index.
-    /// It will also always perform an allocation before swapping out the internal buffer.
-    #[allow(dead_code)]
-    pub fn insert(&mut self, index: usize, elem: T) {
-        // Unlike push, we can observe the buffer changing underneath us
-        // in the case of concurrent readers. So we need to allocate a new
-        // buffer every time.
-
-        let buf = self.target.buf.load();
-        let len = buf.len.load(Ordering::Relaxed);
-
-        assert!(index <= len, "index out of bounds");
-        let mut new_buf = if buf.cap == len {
-            buf.allocate_copy(index, None)
-        } else {
-            buf.allocate_copy(index, Some(buf.cap))
-        };
-
-        unsafe {
-            // Copy second part of old slice into destination
-            std::ptr::copy_nonoverlapping(
-                buf.as_ptr().add(index),
-                new_buf.as_ptr().add(index + 1),
-                len - index,
-            );
-            std::ptr::write(new_buf.as_ptr().add(index), elem);
-        }
-
-        *new_buf.len.get_mut() = len + 1;
-
-        self.target.buf.store(Arc::new(new_buf));
-        self.target.condvar.notify_all();
+        self.buf.len.load(Ordering::Relaxed)
     }
 
     /// Reserves capacity for at least `additional` more elements to be inserted
@@ -219,18 +180,16 @@ where
     /// capacity will be greater than or equal to `self.len() + additional`.
     /// Does nothing if capacity is already sufficient.
     pub fn reserve(&mut self, additional: usize) {
-        let buf = self.target.buf.load();
-        let len = buf.len.load(Ordering::Relaxed);
-        if len.saturating_add(additional) > buf.cap {
-            self.grow(&buf, len, Some(buf.cap + additional));
+        let len = self.len();
+        if len.saturating_add(additional) > self.buf.cap {
+            self.grow(len, Some(self.buf.cap + additional));
         }
     }
 
-    /// Grow will return a buffer that the caller can write to.
-    fn grow(&mut self, buf: &RawBuf<T>, len: usize, new_cap: Option<usize>) -> Arc<RawBuf<T>> {
-        let ret = Arc::new(buf.allocate_copy(len, new_cap));
-        self.target.buf.store(ret.clone());
-        ret
+    fn grow(&mut self, len: usize, new_cap: Option<usize>) {
+        let new_buf = Arc::new(self.buf.allocate_copy(len, new_cap));
+        self.target.buf.store(new_buf.clone());
+        self.buf = new_buf;
     }
 
     pub fn has_readers(&self) -> bool {
@@ -247,14 +206,14 @@ impl<T> Deref for CowVecWriter<T> {
         //         from it as long as the lifetime prevents the writer from
         //         growing reallocating the internal buffer.
         let buf = self.target.buf.load();
-        let len = buf.len.load(Ordering::Acquire);
+        let len = buf.len.load(Ordering::Relaxed);
         unsafe { std::slice::from_raw_parts(buf.as_ptr(), len) }
     }
 }
 
 impl<T> Drop for CowVecWriter<T> {
     fn drop(&mut self) {
-        self.target.completed.store(true, Ordering::Release);
+        assert!(self.target.completed.set(self.buf.clone()).is_ok());
         self.target.condvar.notify_all();
     }
 }
@@ -271,7 +230,8 @@ impl<T> Drop for CowVecWriter<T> {
 /// The `CowVecWriter<T>` type is an exclusive writer to a `CowVec<T>`.
 pub struct CowVec<T> {
     buf: ArcSwap<RawBuf<T>>,
-    completed: AtomicBool,
+    // Pinned buffer when the writer drops. Once set, reads bypass the arc-swap.
+    completed: OnceLock<Arc<RawBuf<T>>>,
     /// Used to wake threads blocked in `wait_for_index`.
     condvar: Condvar,
     condvar_lock: Mutex<()>,
@@ -284,20 +244,22 @@ impl<T> CowVec<T> {
     #[inline]
     pub fn new() -> (Arc<Self>, CowVecWriter<T>) {
         assert!(std::mem::size_of::<T>() != 0);
-        let buf = ArcSwap::from_pointee(RawBuf::empty());
-        let buf = Arc::new(Self {
-            buf,
-            completed: AtomicBool::new(false),
+        let buf = Arc::new(RawBuf::empty());
+
+        let reader = Arc::new(Self {
+            buf: ArcSwap::new(buf.clone()),
+            completed: OnceLock::new(),
             condvar: Condvar::new(),
             condvar_lock: Mutex::new(()),
         });
-        (
-            buf.clone(),
-            CowVecWriter {
-                target: buf,
-                last_notified: 0,
-            },
-        )
+
+        let writer = CowVecWriter {
+            target: reader.clone(),
+            buf,
+            last_notified: 0,
+        };
+
+        (reader, writer)
     }
 
     /// Constructs a new, empty `CowVec<T>` with at least the specified capacity.
@@ -308,20 +270,22 @@ impl<T> CowVec<T> {
     #[allow(dead_code)]
     pub fn with_capacity(cap: usize) -> (Arc<Self>, CowVecWriter<T>) {
         assert!(std::mem::size_of::<T>() != 0);
-        let buf = ArcSwap::from_pointee(RawBuf::allocate(0, cap));
-        let buf = Arc::new(Self {
-            buf,
-            completed: AtomicBool::new(false),
+        let buf = Arc::new(RawBuf::allocate(0, cap));
+
+        let reader = Arc::new(Self {
+            buf: ArcSwap::new(buf.clone()),
+            completed: OnceLock::new(),
             condvar: Condvar::new(),
             condvar_lock: Mutex::new(()),
         });
-        (
-            buf.clone(),
-            CowVecWriter {
-                target: buf,
-                last_notified: 0,
-            },
-        )
+
+        let writer = CowVecWriter {
+            target: reader.clone(),
+            buf,
+            last_notified: 0,
+        };
+
+        (reader, writer)
     }
 
     /// Constructs a new, empty `CowVec<T>`.
@@ -345,7 +309,7 @@ impl<T> CowVec<T> {
     ///
     /// When this returns true, no more elements can be added to this vector.
     pub fn is_complete(&self) -> bool {
-        self.completed.load(Ordering::Acquire)
+        self.completed.get().is_some()
     }
 
     /// Blocks the calling thread until either `len() > idx` or the vector is
@@ -375,9 +339,20 @@ impl<T> CowVec<T> {
     where
         F: FnOnce(&[T]) -> R,
     {
-        let buf = self.buf.load();
-        let len = buf.len.load(Ordering::Acquire);
-        cb(unsafe { std::slice::from_raw_parts(buf.as_ptr(), len) })
+        if let Some(buf) = self.completed.get() {
+            Self::read_with(buf, Ordering::Relaxed, cb)
+        } else {
+            let buf = self.buf.load();
+            Self::read_with(&buf, Ordering::Acquire, cb)
+        }
+    }
+
+    #[inline(always)]
+    fn read_with<F, R>(buf: &RawBuf<T>, ordering: Ordering, cb: F) -> R
+    where
+        F: FnOnce(&[T]) -> R,
+    {
+        cb(unsafe { std::slice::from_raw_parts(buf.as_ptr(), buf.len.load(ordering)) })
     }
 
     /// Returns a snapshot of the current state of the vector.
@@ -385,10 +360,18 @@ impl<T> CowVec<T> {
     /// This refs/pins the current internal buffer. Users can read
     /// up to `len()` elements at the time of the snapshot.
     pub fn snapshot(&self) -> CowVecSnapshot<T> {
-        let buf = self.buf.load();
-        CowVecSnapshot {
-            len: buf.len.load(Ordering::Acquire),
-            buf,
+        if let Some(frozen) = self.completed.get() {
+            let len = frozen.len.load(Ordering::Relaxed);
+            CowVecSnapshot {
+                len,
+                buf: frozen.clone(),
+            }
+        } else {
+            let buf = self.buf.load_full();
+            CowVecSnapshot {
+                len: buf.len.load(Ordering::Acquire),
+                buf,
+            }
         }
     }
 }
@@ -421,8 +404,8 @@ impl<T: Copy> From<Vec<T>> for CowVec<T> {
         let (ptr, len, cap) = (me.as_mut_ptr(), me.len(), me.capacity());
 
         Self {
-            buf: ArcSwap::from_pointee(RawBuf::new(NonNull::new(ptr).unwrap(), len, cap)),
-            completed: AtomicBool::new(true), // Vec is already complete, no writer exists
+            buf: ArcSwap::from_pointee(RawBuf::empty()),
+            completed: OnceLock::from(Arc::new(RawBuf::new(NonNull::new(ptr).unwrap(), len, cap))),
             condvar: Condvar::new(),
             condvar_lock: Mutex::new(()),
         }
@@ -436,7 +419,7 @@ impl<T> std::fmt::Debug for CowVec<T> {
 }
 
 pub struct CowVecSnapshot<T> {
-    buf: arc_swap::Guard<Arc<RawBuf<T>>>,
+    buf: Arc<RawBuf<T>>,
     len: usize,
 }
 
@@ -594,31 +577,6 @@ mod tests {
     }
 
     #[test]
-    fn test_miri_insert() {
-        let (arr, mut writer) = CowVec::new();
-        for i in (0..100).step_by(10) {
-            writer.push(i);
-        }
-
-        let expected = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90];
-        for (i, expected) in expected.into_iter().enumerate() {
-            assert_eq!(Some(expected), arr.get(i));
-        }
-
-        writer.insert(1, 5);
-        let expected = [0, 5, 10, 20, 30, 40, 50, 60, 70, 80, 90];
-        for (i, expected) in expected.into_iter().enumerate() {
-            assert_eq!(Some(expected), arr.get(i));
-        }
-
-        writer.insert(1, 5);
-        let expected = [0, 5, 5, 10, 20, 30, 40, 50, 60, 70, 80, 90];
-        for (i, expected) in expected.into_iter().enumerate() {
-            assert_eq!(Some(expected), arr.get(i));
-        }
-    }
-
-    #[test]
     fn test_completed_flag() {
         let (arr, writer) = CowVec::<i32>::new();
 
@@ -770,35 +728,6 @@ mod tests {
         assert!(arr.is_complete());
         assert!(clone1.is_complete());
         assert!(clone2.is_complete());
-    }
-
-    #[test]
-    fn test_completion_with_insert_operations() {
-        let (arr, mut writer) = CowVec::new();
-
-        // Add some initial elements
-        for i in 0..5 {
-            writer.push(i * 10);
-        }
-        assert!(!arr.is_complete());
-
-        // Perform insert operations
-        writer.insert(2, 15);
-        writer.insert(0, -5);
-        assert!(!arr.is_complete());
-
-        let expected = [-5, 0, 10, 15, 20, 30, 40];
-        for (i, &expected) in expected.iter().enumerate() {
-            assert_eq!(arr.get(i), Some(expected));
-        }
-
-        drop(writer);
-        assert!(arr.is_complete());
-
-        // Data should still be accessible after completion
-        for (i, &expected) in expected.iter().enumerate() {
-            assert_eq!(arr.get(i), Some(expected));
-        }
     }
 
     #[test]
