@@ -10,9 +10,9 @@ pub struct CommandHighlighter<'a> {
 }
 
 enum TakeRemaining {
-    None,
+    Normal,
     Args,
-    NoArgs,
+    Ignore,
 }
 
 impl<'a> CommandHighlighter<'a> {
@@ -49,8 +49,16 @@ impl<'a> CommandHighlighter<'a> {
     }
 
     pub fn highlight(mut self, commands: &CommandSystem) -> Vec<Span<'a>> {
+        // can we parse as number?
+        if let Ok(_) = self.base.input.parse::<usize>() {
+            self.base
+                .eat_and_color(self.base.input.len())
+                .fg(colors::TEXT_ACTIVE);
+            return self.base.extract();
+        }
+
         let mut cmd: Option<&Command> = None;
-        let mut take_remaining_as_args = TakeRemaining::None;
+        let mut take_remaining_as_args = TakeRemaining::Normal;
 
         let skip = self.base.scan_bytes_until(|b| !b.is_ascii_whitespace());
         if let Some(skip) = skip {
@@ -63,11 +71,11 @@ impl<'a> CommandHighlighter<'a> {
                     arg.fg(colors::TEXT_ACTIVE);
                     continue;
                 }
-                TakeRemaining::NoArgs => {
+                TakeRemaining::Ignore => {
                     arg.fg(colors::TEXT_INACTIVE);
                     continue;
                 }
-                TakeRemaining::None => {}
+                TakeRemaining::Normal => {}
             }
 
             let arg_str = arg.content;
@@ -88,7 +96,7 @@ impl<'a> CommandHighlighter<'a> {
                     take_remaining_as_args = TakeRemaining::Args;
                 } else if has_action && !takes_args {
                     arg.fg(colors::TEXT_INACTIVE);
-                    take_remaining_as_args = TakeRemaining::NoArgs;
+                    take_remaining_as_args = TakeRemaining::Ignore;
                 } else {
                     arg.fg(colors::ERROR);
                     break;
