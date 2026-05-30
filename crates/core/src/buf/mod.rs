@@ -55,6 +55,14 @@ impl FileInner {
             segments: LruCache::new(seg_count),
         }
     }
+
+    fn fetch(&mut self, file: &File, range: Range<u64>, seg_id: usize) -> Arc<Segment> {
+        self.segments
+            .get_or_insert(seg_id, || {
+                Arc::new(Segment::map_file(range, file).expect("mmap was successful"))
+            })
+            .clone()
+    }
 }
 
 enum TempFileState {
@@ -130,13 +138,7 @@ impl BufferMap {
                 let range = self.data_range_of_id(seg_id);
                 let range = range.start..range.end.min(*len);
 
-                let FileInner { segments } = &mut *inner.borrow_mut();
-                let segment = segments
-                    .get_or_insert(seg_id, || {
-                        Arc::new(Segment::map_file(range, file).expect("mmap was successful"))
-                    })
-                    .clone();
-                Some(segment)
+                Some(inner.borrow_mut().fetch(file, range, seg_id))
             }
             BufferRepr::Stream(inner) => {
                 let StreamInner {
@@ -172,15 +174,7 @@ impl BufferMap {
                 }
                 let range = range.start..range.end.min(len);
 
-                let FileInner { segments } = &mut *inner.borrow_mut();
-                let segment = segments
-                    .get_or_insert(seg_id, || {
-                        Arc::new(
-                            Segment::map_file(range, file.as_file()).expect("mmap was successful"),
-                        )
-                    })
-                    .clone();
-                Some(segment)
+                Some(inner.borrow_mut().fetch(file.as_file(), range, seg_id))
             }
         }
     }
@@ -452,8 +446,9 @@ impl SegBuffer {
                     }
                 }
                 BufferRepr::FileBackedStream { file, .. } => {
-                    file.as_file().seek(std::io::SeekFrom::Start(0))?;
-                    file.as_file().read_to_string(output)?;
+                    let mut file = file.as_file();
+                    file.seek(std::io::SeekFrom::Start(0))?;
+                    file.read_to_string(output)?;
                 }
             },
         }
@@ -533,64 +528,53 @@ impl ContiguousSegmentIterator {
         let curr_line_data_start = self.index.data_of_line(curr_line)?;
         let curr_line_data_end = self.index.data_of_line(curr_line + 1)?;
 
-        let curr_line_seg_start = self.map.id_of_data(curr_line_data_start);
-        let curr_line_seg_end = self.map.id_of_data(curr_line_data_end);
+        let curr_line_seg =
+            self.map.id_of_data(curr_line_data_start)..self.map.id_of_data(curr_line_data_end);
 
-        if curr_line_seg_end != curr_line_seg_start {
-            let seg_first = self.map.fetch(curr_line_seg_start)?;
+        if curr_line_seg.end != curr_line_seg.start {
+            let seg_first = self.map.fetch(curr_line_seg.start)?;
+            let seg_last = self.map.fetch(curr_line_seg.end);
 
-            let mut populate_buffer_start = |seg_last: Option<&Segment>| -> Option<()> {
-                self.imm_buf.clear();
-                self.imm_buf
-                    .reserve((curr_line_data_end - curr_line_data_start) as usize);
-
-                let start = seg_first.translate_inner_data_index(curr_line_data_start);
-                self.imm_buf.extend_from_slice(&seg_first[start as usize..]);
-                for seg_id in curr_line_seg_start + 1..curr_line_seg_end {
-                    self.imm_buf.extend_from_slice(&self.map.fetch(seg_id)?);
-                }
-                if let Some(seg_last) = seg_last {
-                    let end = seg_last.translate_inner_data_index(curr_line_data_end);
-                    self.imm_buf.extend_from_slice(&seg_last[..end as usize]);
-                }
-
-                self.line_range.start += 1;
-                Some(())
-            };
-
-            match self.map.fetch(curr_line_seg_end) {
-                Some(seg_last) => {
-                    populate_buffer_start(Some(&seg_last))?;
-                    Some(ContiguousSegment {
-                        index: &self.index,
-                        range: curr_line_data_start..curr_line_data_end,
-                        data: &self.imm_buf,
-                    })
-                }
-                None if self.index.is_complete()
-                    && curr_line_seg_end == curr_line_seg_start + 1 =>
-                {
-                    let range = seg_first
-                        .translate_inner_data_range(curr_line_data_start, curr_line_data_end);
-                    let segment = self.imm_seg.insert(seg_first);
-                    Some(ContiguousSegment {
-                        index: &self.index,
-                        range: curr_line_data_start..curr_line_data_end,
-                        data: &segment[range.start as usize..range.end as usize],
-                    })
-                }
-                None if self.index.is_complete() => {
-                    populate_buffer_start(None)?;
-                    Some(ContiguousSegment {
-                        index: &self.index,
-                        range: curr_line_data_start..curr_line_data_end,
-                        data: &self.imm_buf,
-                    })
-                }
-                None => return None,
+            if seg_last.is_none()
+                && self.index.is_complete()
+                && curr_line_seg.end == curr_line_seg.start + 1
+            {
+                let range =
+                    seg_first.translate_inner_data_range(curr_line_data_start, curr_line_data_end);
+                let segment = self.imm_seg.insert(seg_first);
+                return Some(ContiguousSegment {
+                    index: &self.index,
+                    range: curr_line_data_start..curr_line_data_end,
+                    data: &segment[range.start as usize..range.end as usize],
+                });
             }
+
+            if seg_last.is_none() && !self.index.is_complete() {
+                return None;
+            }
+
+            self.imm_buf.clear();
+            self.imm_buf
+                .reserve((curr_line_data_end - curr_line_data_start) as usize);
+            let start = seg_first.translate_inner_data_index(curr_line_data_start);
+
+            self.imm_buf.extend_from_slice(&seg_first[start as usize..]);
+            for seg_id in curr_line_seg.start + 1..curr_line_seg.end {
+                self.imm_buf.extend_from_slice(&self.map.fetch(seg_id)?);
+            }
+            if let Some(seg_last) = &seg_last {
+                let end = seg_last.translate_inner_data_index(curr_line_data_end);
+                self.imm_buf.extend_from_slice(&seg_last[..end as usize]);
+            }
+            self.line_range.start += 1;
+
+            Some(ContiguousSegment {
+                index: &self.index,
+                range: curr_line_data_start..curr_line_data_end,
+                data: &self.imm_buf,
+            })
         } else {
-            let curr_seg_data_start = curr_line_seg_start as u64 * self.map.segment_size;
+            let curr_seg_data_start = curr_line_seg.start as u64 * self.map.segment_size;
             let curr_seg_data_end = curr_seg_data_start + self.map.segment_size;
 
             let line_end = match self.index.line_of_data(curr_seg_data_end) {
@@ -602,7 +586,7 @@ impl ContiguousSegmentIterator {
             let line_end_data_start = self.index.data_of_line(line_end)?;
 
             // this line should not cross multiple segments, else we would have caught in the first case
-            let segment = self.map.fetch(curr_line_seg_start)?;
+            let segment = self.map.fetch(curr_line_seg.start)?;
             let range =
                 segment.translate_inner_data_range(curr_line_data_start, line_end_data_start);
             assert!(line_end_data_start - curr_seg_data_start <= self.map.segment_size);
