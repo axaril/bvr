@@ -1,6 +1,8 @@
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
-use crate::cowvec::{CowVec, CowVecWriter};
+use arc_swap::ArcSwap;
+
+use crate::cowvec::{CowVec, CowVecSnapshot, CowVecWriter};
 
 /// An exclusive writer to a `SplitCowVec<T>`.
 ///
@@ -9,8 +11,8 @@ use crate::cowvec::{CowVec, CowVecWriter};
 /// allowing concurrent reads while writing.
 pub struct SplitCowVecWriter<T> {
     elements_per_segment: usize,
-    segments: Arc<Mutex<Vec<Arc<CowVec<T>>>>>,
-    current: Option<(Arc<CowVec<T>>, CowVecWriter<T>)>,
+    target: Arc<SplitCowVec<T>>,
+    current: Option<CowVecWriter<T>>,
 }
 
 impl<T> SplitCowVecWriter<T>
@@ -22,38 +24,45 @@ where
     /// This operation is O(1) amortized. When the current segment reaches
     /// `elements_per_segment`, a new segment is created.
     pub fn push(&mut self, elem: T) {
-        let writer = if let Some((_, writer)) = self.current.as_mut() {
+        let writer = if let Some(writer) = self.current.as_mut() {
             if writer.len() >= self.elements_per_segment {
-                Self::create_new_segment(self)
+                self.new_segment()
             } else {
                 writer
             }
         } else {
-            Self::create_new_segment(self)
+            self.new_segment()
         };
 
         writer.push(elem);
     }
+}
 
-    /// Creates a new segment and switches to it.
-    fn create_new_segment(&mut self) -> &mut CowVecWriter<T> {
-        // Save the current segment if it exists
-        if let Some((segment, _)) = self.current.take() {
-            self.segments.lock().unwrap().push(segment);
-        }
+impl<T> SplitCowVecWriter<T> {
+    fn new_segment(&mut self) -> &mut CowVecWriter<T> {
+        let (new_segment, writer) = CowVec::new();
 
-        // Create a new CowVec
-        &mut self.current.insert(CowVec::new()).1
+        let segments = self
+            .target
+            .segments
+            .load()
+            .iter()
+            .cloned()
+            .chain(Some(new_segment.clone()))
+            .collect::<Box<[_]>>();
+
+        self.target.segments.store(Arc::new(segments));
+        self.current.insert(writer)
     }
 
     /// Returns the total number of elements written so far.
     pub fn len(&self) -> usize {
-        self.segments
-            .lock()
-            .unwrap()
-            .iter()
-            .map(|seg| seg.len())
-            .sum()
+        self.target
+            .segments
+            .load()
+            .split_last()
+            .map(|(last, prev)| prev.len() * self.elements_per_segment + last.len())
+            .unwrap_or(0)
     }
 
     /// Returns true if no elements have been written.
@@ -63,16 +72,7 @@ where
 
     /// Returns the number of segments (completed + current).
     pub fn segment_count(&self) -> usize {
-        self.segments.lock().unwrap().len()
-    }
-}
-
-impl<T> Drop for SplitCowVecWriter<T> {
-    fn drop(&mut self) {
-        // Finalize the current segment if it exists
-        if let Some((segment, _)) = self.current.take() {
-            self.segments.lock().unwrap().push(segment);
-        }
+        self.target.segments.load().len()
     }
 }
 
@@ -82,7 +82,8 @@ impl<T> Drop for SplitCowVecWriter<T> {
 /// `elements_per_segment` elements. This can coexist with a `SplitCowVecWriter`,
 /// allowing concurrent reads while writing.
 pub struct SplitCowVec<T> {
-    segments: Arc<Mutex<Vec<Arc<CowVec<T>>>>>,
+    elements_per_segment: usize,
+    segments: ArcSwap<Box<[Arc<CowVec<T>>]>>,
 }
 
 impl<T> SplitCowVec<T> {
@@ -92,36 +93,40 @@ impl<T> SplitCowVec<T> {
     ///
     /// # Arguments
     /// * `elements_per_segment` - Number of elements per segment before creating a new CowVec
-    pub fn new(elements_per_segment: usize) -> (Self, SplitCowVecWriter<T>) {
-        let segments = Arc::new(Mutex::new(Vec::new()));
+    pub fn new(elements_per_segment: usize) -> (Arc<Self>, SplitCowVecWriter<T>) {
+        let initial_segments: Arc<Box<[_]>> = Arc::new(Box::new([]));
+
+        let cow = Arc::new(Self {
+            elements_per_segment,
+            segments: ArcSwap::new(initial_segments.clone()),
+        });
 
         let writer = SplitCowVecWriter {
             elements_per_segment,
-            segments: segments.clone(),
+            target: cow.clone(),
             current: None,
         };
 
-        (SplitCowVec { segments: segments }, writer)
+        (cow, writer)
     }
 
     /// Constructs a new, empty `SplitCowVec<T>` with default configuration (1024 elements per segment).
-    pub fn with_default_config() -> (Self, SplitCowVecWriter<T>) {
+    pub fn with_default_config() -> (Arc<Self>, SplitCowVecWriter<T>) {
         Self::new(1024)
     }
 
     /// Returns the total number of elements across all segments.
     pub fn len(&self) -> usize {
         self.segments
-            .lock()
-            .unwrap()
-            .iter()
-            .map(|seg| seg.len())
-            .sum()
+            .load()
+            .split_last()
+            .map(|(last, prev)| prev.len() * self.elements_per_segment + last.len())
+            .unwrap_or(0)
     }
 
     /// Returns the number of segments.
     pub fn segment_count(&self) -> usize {
-        self.segments.lock().unwrap().len()
+        self.segments.load().len()
     }
 
     /// Returns true if the split vector contains no elements.
@@ -136,8 +141,7 @@ impl<T> SplitCowVec<T> {
     pub fn snapshot(&self) -> SplitCowVecSnapshot<T> {
         let snapshots = self
             .segments
-            .lock()
-            .unwrap()
+            .load()
             .iter()
             .map(|seg| seg.snapshot())
             .collect();
@@ -146,11 +150,20 @@ impl<T> SplitCowVec<T> {
     }
 }
 
-impl<T> Clone for SplitCowVec<T> {
-    fn clone(&self) -> Self {
-        Self {
-            segments: self.segments.clone(),
-        }
+impl<T> SplitCowVec<T>
+where
+    T: Copy,
+{
+    /// Returns the element at the given index, or `None` if out of bounds.
+    pub fn get(&self, index: usize) -> Option<T> {
+        let eps = self.elements_per_segment;
+        let segments = self.segments.load();
+        let seg = segments.get(index / eps)?;
+        seg.get(index % eps)
+    }
+
+    pub unsafe fn get_unchecked(&self, index: usize) -> T {
+        self.get(index).unwrap_unchecked()
     }
 }
 
@@ -162,7 +175,7 @@ impl<T> std::fmt::Debug for SplitCowVec<T> {
 
 /// A snapshot of a `SplitCowVec<T>` at a point in time.
 pub struct SplitCowVecSnapshot<T> {
-    snapshots: Vec<crate::cowvec::CowVecSnapshot<T>>,
+    snapshots: Vec<CowVecSnapshot<T>>,
 }
 
 impl<T> SplitCowVecSnapshot<T> {
@@ -172,14 +185,254 @@ impl<T> SplitCowVecSnapshot<T> {
     }
 
     /// Returns a snapshot of the segment at the given index, or `None` if out of bounds.
-    pub fn get_segment(&self, index: usize) -> Option<&crate::cowvec::CowVecSnapshot<T>> {
+    pub fn get_segment(&self, index: usize) -> Option<&CowVecSnapshot<T>> {
         self.snapshots.get(index)
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use std::{
+        sync::{
+            atomic::{AtomicBool, Ordering},
+            Arc, Barrier,
+        },
+        thread,
+    };
+
     use super::*;
+
+    #[test]
+    fn test_concurrent_reads_while_writing() {
+        const READER_THREADS: usize = 8;
+        const TOTAL: usize = 10_000;
+        const SEG_SIZE: usize = 256;
+
+        let (vec, mut writer) = SplitCowVec::<usize>::new(SEG_SIZE);
+        let barrier = Arc::new(Barrier::new(READER_THREADS + 1));
+        let done = Arc::new(AtomicBool::new(false));
+
+        let handles: Vec<_> = (0..READER_THREADS)
+            .map(|_| {
+                let vec = vec.clone();
+                let barrier = barrier.clone();
+                let done = done.clone();
+                thread::spawn(move || {
+                    barrier.wait();
+                    while !done.load(Ordering::Acquire) {
+                        // Only iterate up to the observed length to avoid spurious None returns.
+                        let len = vec.len();
+                        for i in 0..len {
+                            if let Some(val) = vec.get(i) {
+                                assert_eq!(val, i, "data corruption at index {i}");
+                            }
+                        }
+                    }
+                    // After writer drops every element must be readable.
+                    for i in 0..TOTAL {
+                        assert_eq!(vec.get(i), Some(i), "missing element at index {i}");
+                    }
+                })
+            })
+            .collect();
+
+        barrier.wait();
+        for i in 0..TOTAL {
+            writer.push(i);
+        }
+        drop(writer);
+        done.store(true, Ordering::Release);
+
+        for handle in handles {
+            handle.join().unwrap();
+        }
+    }
+
+    /// All segments except the last must have exactly `elements_per_segment` elements.
+    /// This invariant must hold for every snapshot taken concurrently with writes.
+    #[test]
+    fn test_snapshot_segment_size_invariant() {
+        const THREADS: usize = 4;
+        const TOTAL: usize = 5_000;
+        const SEG_SIZE: usize = 64;
+
+        let (vec, mut writer) = SplitCowVec::<usize>::new(SEG_SIZE);
+        let barrier = Arc::new(Barrier::new(THREADS + 1));
+        let done = Arc::new(AtomicBool::new(false));
+
+        let handles: Vec<_> = (0..THREADS)
+            .map(|_| {
+                let vec = vec.clone();
+                let barrier = barrier.clone();
+                let done = done.clone();
+                thread::spawn(move || {
+                    barrier.wait();
+                    while !done.load(Ordering::Acquire) {
+                        let snap = vec.snapshot();
+                        let n = snap.segment_count();
+                        // Segments 0..n-1 must be exactly full.
+                        for i in 0..n.saturating_sub(1) {
+                            let seg = snap.get_segment(i).unwrap();
+                            assert_eq!(
+                                seg.len(),
+                                SEG_SIZE,
+                                "segment {i}/{n} has {} elements, expected {SEG_SIZE}",
+                                seg.len()
+                            );
+                        }
+                        // Last segment may have 0..=SEG_SIZE elements.
+                        if n > 0 {
+                            let last = snap.get_segment(n - 1).unwrap();
+                            assert!(last.len() <= SEG_SIZE);
+                        }
+                    }
+                })
+            })
+            .collect();
+
+        barrier.wait();
+        for i in 0..TOTAL {
+            writer.push(i);
+        }
+        drop(writer);
+        done.store(true, Ordering::Release);
+
+        for handle in handles {
+            handle.join().unwrap();
+        }
+    }
+
+    /// Multiple reader threads hammering different index ranges, covering all segment
+    /// boundaries, while the writer is active.
+    #[test]
+    fn test_concurrent_readers_across_segments() {
+        const TOTAL: usize = 3_000;
+        const SEG_SIZE: usize = 7; // prime to hit non-power-of-two boundaries
+        const READER_THREADS: usize = 6;
+
+        let (vec, mut writer) = SplitCowVec::<usize>::new(SEG_SIZE);
+
+        for i in 0..TOTAL {
+            writer.push(i);
+        }
+        drop(writer);
+
+        // All data written before spawning threads — focus on read correctness.
+        let barrier = Arc::new(Barrier::new(READER_THREADS));
+        let handles: Vec<_> = (0..READER_THREADS)
+            .map(|thread_id| {
+                let vec = vec.clone();
+                let barrier = barrier.clone();
+                thread::spawn(move || {
+                    barrier.wait();
+                    // Stride-based access to interleave threads across segment boundaries.
+                    let mut i = thread_id;
+                    while i < TOTAL {
+                        assert_eq!(
+                            vec.get(i),
+                            Some(i),
+                            "thread {thread_id}: wrong value at {i}"
+                        );
+                        i += READER_THREADS;
+                    }
+                })
+            })
+            .collect();
+
+        for handle in handles {
+            handle.join().unwrap();
+        }
+    }
+
+    /// After the writer is dropped every snapshot should see a consistent, complete
+    /// picture: correct per-segment element counts and correct values.
+    #[test]
+    fn test_snapshot_consistency_after_completion() {
+        const TOTAL: usize = 500;
+        const SEG_SIZE: usize = 32;
+
+        let (vec, mut writer) = SplitCowVec::<usize>::new(SEG_SIZE);
+        for i in 0..TOTAL {
+            writer.push(i);
+        }
+        drop(writer);
+
+        let expected_segments = TOTAL.div_ceil(SEG_SIZE);
+        let snap = vec.snapshot();
+        assert_eq!(snap.segment_count(), expected_segments);
+
+        // All segments except the last are full.
+        for i in 0..expected_segments - 1 {
+            assert_eq!(snap.get_segment(i).unwrap().len(), SEG_SIZE);
+        }
+        // Last segment holds the remainder.
+        let remainder = TOTAL % SEG_SIZE;
+        let last_len = if remainder == 0 { SEG_SIZE } else { remainder };
+        assert_eq!(
+            snap.get_segment(expected_segments - 1).unwrap().len(),
+            last_len
+        );
+
+        // Values are correct across all segments.
+        let mut global_idx = 0;
+        for seg_idx in 0..expected_segments {
+            let seg = snap.get_segment(seg_idx).unwrap();
+            for &val in seg.iter() {
+                assert_eq!(val, global_idx, "wrong value at global index {global_idx}");
+                global_idx += 1;
+            }
+        }
+    }
+
+    /// High-contention stress test: many threads reading while the writer produces
+    /// many small segments.
+    #[test]
+    fn test_high_contention_small_segments() {
+        const READER_THREADS: usize = 16;
+        const TOTAL: usize = 8_000;
+        const SEG_SIZE: usize = 8;
+
+        let (vec, mut writer) = SplitCowVec::<usize>::new(SEG_SIZE);
+        let barrier = Arc::new(Barrier::new(READER_THREADS + 1));
+        let done = Arc::new(AtomicBool::new(false));
+
+        let handles: Vec<_> = (0..READER_THREADS)
+            .map(|_| {
+                let vec = vec.clone();
+                let barrier = barrier.clone();
+                let done = done.clone();
+                thread::spawn(move || {
+                    barrier.wait();
+                    while !done.load(Ordering::Acquire) {
+                        let len = vec.len();
+                        for i in 0..len {
+                            if let Some(val) = vec.get(i) {
+                                assert_eq!(val, i);
+                            }
+                        }
+                        std::hint::spin_loop();
+                    }
+                    for i in 0..TOTAL {
+                        assert_eq!(vec.get(i), Some(i));
+                    }
+                })
+            })
+            .collect();
+
+        barrier.wait();
+        for i in 0..TOTAL {
+            writer.push(i);
+            if i % 100 == 0 {
+                thread::yield_now();
+            }
+        }
+        drop(writer);
+        done.store(true, Ordering::Release);
+
+        for handle in handles {
+            handle.join().unwrap();
+        }
+    }
 
     #[test]
     fn test_split_cowvec_basic() {
