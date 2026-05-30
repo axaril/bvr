@@ -84,9 +84,7 @@ impl ProgressReport {
     }
 
     fn complete(&self) {
-        if let Some(progress) = self.progress.as_ref() {
-            progress.store(1f32.to_bits(), std::sync::atomic::Ordering::Relaxed);
-        }
+        self.store_progress(1f32);
     }
 }
 
@@ -190,7 +188,7 @@ where
             }
 
             while let Ok((upper, lowers)) = task_rx.recv() {
-                self.extend_from_slice(upper, &lowers)?;
+                self.extend_from_slice(upper, &lowers);
             }
         }
 
@@ -198,6 +196,21 @@ where
         self.push(len);
 
         Ok(())
+    }
+
+    fn fill_buf(stream: &mut impl std::io::Read, buf: &mut [u8]) -> Result<usize> {
+        let mut len = 0;
+        loop {
+            let remaining = &mut buf[len..];
+            if remaining.is_empty() {
+                break;
+            }
+            match stream.read(remaining)? {
+                0 => break,
+                l => len += l,
+            }
+        }
+        Ok(len)
     }
 
     fn index_stream(
@@ -213,17 +226,7 @@ where
         loop {
             let mut segment = SegmentMut::new(len, segment_size)?;
 
-            let mut buf_len = 0;
-            loop {
-                let remaining = &mut segment[buf_len..];
-                if remaining.is_empty() {
-                    break;
-                }
-                match stream.read(remaining)? {
-                    0 => break,
-                    l => buf_len += l,
-                }
-            }
+            let buf_len = Self::fill_buf(&mut stream, &mut segment)?;
 
             if buf_len == 0 {
                 break;
@@ -236,7 +239,7 @@ where
                 .map_err(|_| Error::Internal)?;
 
             IndexingTask::new(len, &segment)
-                .compute(|upper, lowers: Vec<I>| self.extend_from_slice(upper, &lowers))?;
+                .compute(|upper, lowers: Vec<I>| Ok(self.extend_from_slice(upper, &lowers)))?;
 
             len += buf_len as u64;
         }
@@ -262,24 +265,14 @@ where
             file.set_len(len + segment_size)?;
             let mut segment = SegmentMut::map_file(len..len + segment_size, &file)?;
 
-            let mut buf_len = 0;
-            loop {
-                let remaining = &mut segment[buf_len..];
-                if remaining.is_empty() {
-                    break;
-                }
-                match stream.read(remaining)? {
-                    0 => break,
-                    l => buf_len += l,
-                }
-            }
+            let buf_len = Self::fill_buf(&mut stream, &mut segment)?;
 
             if buf_len == 0 {
                 break;
             }
 
             IndexingTask::new(len, &segment)
-                .compute(|upper, lowers: Vec<I>| self.extend_from_slice(upper, &lowers))?;
+                .compute(|upper, lowers: Vec<I>| Ok(self.extend_from_slice(upper, &lowers)))?;
 
             len += buf_len as u64;
 
@@ -295,24 +288,23 @@ where
         Ok(())
     }
 
-    fn extend_from_slice(&mut self, upper: usize, lowers: &[I]) -> Result<()> {
+    fn advance_upper(&mut self, upper: usize) {
         if upper > self.curr_upper {
             self.upper.push((self.lower.len(), upper));
             self.curr_upper = upper;
         }
+    }
+
+    fn extend_from_slice(&mut self, upper: usize, lowers: &[I]) {
+        self.advance_upper(upper);
         self.lower.extend_from_slice(&lowers);
-        Ok(())
     }
 
     pub fn push(&mut self, line_data: u64) {
         let upper = (line_data >> I::BITS) as usize;
         let lower = I::extract_lower(line_data);
 
-        if upper > self.curr_upper {
-            self.upper.push((self.lower.len(), upper));
-            self.curr_upper = upper;
-        }
-
+        self.advance_upper(upper);
         self.lower.push(lower);
     }
 }
