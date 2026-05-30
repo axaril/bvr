@@ -68,47 +68,40 @@ impl ViewBounds {
         self.top = index;
     }
 
-    pub fn jump_vertically_to(&mut self, index: usize) {
-        if !(self.top..self.bottom()).contains(&index) {
-            // height remains unchanged
-            if self.top.abs_diff(index) < self.bottom().abs_diff(index) {
-                // bring the top to current
-                self.top = index;
+    fn jump_to(pos: &mut usize, len: usize, index: usize) {
+        let start = *pos;
+        let end = start + len;
+        if !(start..end).contains(&index) {
+            if start.abs_diff(index) < end.abs_diff(index) {
+                *pos = index;
             } else {
-                // bring the bottom to current
-                self.top = index.saturating_sub(self.height).saturating_add(1);
+                *pos = index.saturating_sub(len).saturating_add(1);
             }
         }
+    }
+
+    fn pan(pos: &mut usize, direction: Direction, delta: usize) -> usize {
+        let old = *pos;
+        *pos = match direction {
+            Direction::Back => (*pos).saturating_sub(delta),
+            Direction::Next => (*pos).saturating_add(delta),
+        };
+        pos.abs_diff(old)
+    }
+
+    pub fn jump_vertically_to(&mut self, index: usize) {
+        Self::jump_to(&mut self.top, self.height, index)
     }
 
     pub fn jump_horizontally_to(&mut self, index: usize) {
-        if !(self.left..self.right()).contains(&index) {
-            // width remains unchanged
-            if self.left.abs_diff(index) < self.right().abs_diff(index) {
-                // bring the left to current
-                self.left = index;
-            } else {
-                // bring the right to current
-                self.left = index.saturating_sub(self.width).saturating_add(1);
-            }
-        }
+        Self::jump_to(&mut self.left, self.width, index)
     }
 
     pub fn pan_vertical(&mut self, direction: Direction, delta: usize) -> usize {
-        let old_top = self.top;
-        self.top = match direction {
-            Direction::Back => self.top.saturating_sub(delta),
-            Direction::Next => self.top.saturating_add(delta),
-        };
-        self.top.abs_diff(old_top)
+        Self::pan(&mut self.top, direction, delta)
     }
 
     pub fn pan_horizontal(&mut self, direction: Direction, delta: usize) -> usize {
-        let old_left = self.left;
-        self.left = match direction {
-            Direction::Back => self.left.saturating_sub(delta),
-            Direction::Next => self.left.saturating_add(delta),
-        };
-        self.left.abs_diff(old_left)
+        Self::pan(&mut self.left, direction, delta)
     }
 }
