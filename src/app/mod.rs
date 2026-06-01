@@ -203,22 +203,25 @@ impl App {
         }
     }
 
+    fn viewer(&mut self) -> &mut Viewer {
+        &mut self.app.viewer
+    }
+
     pub fn run(&mut self) -> Result<()> {
         self.term.enter_terminal()?;
         self.event_loop()?;
 
-        if self.app.viewer.config.settings.persist_filter() {
-            if let Some(source) = self.app.viewer.mux.active_mut() {
+        let v = self.viewer();
+
+        if v.config.settings.persist_filter() {
+            if let Some(source) = v.mux.active_mut() {
                 let export = source.compositor_mut().filters().export(None);
 
-                if let Err(err) = self.app.viewer.config.filters.set_persistent_filter(export) {
-                    self.app.viewer.status.msg(format!("filter save: {err}"));
+                if let Err(err) = v.config.filters.set_persistent_filter(export) {
+                    v.status.msg(format!("filter save: {err}"));
+                } else {
+                    v.status.msg("filter save: saved filters");
                 }
-
-                self.app
-                    .viewer
-                    .status
-                    .msg("filter save: saved filters".to_string());
             }
         }
 
@@ -573,17 +576,19 @@ impl App {
                         return Ok(true);
                     }
 
-                    /// Build the new buffer content after accepting `completion` for the last token.
-                    fn build_completion(buf: &str, completion: &str) -> String {
+                    fn get_prefix(buf: &str) -> &str {
                         if buf.ends_with(char::is_whitespace) {
-                            format!("{buf}{completion} ")
+                            buf
                         } else {
-                            let prefix = match buf.rfind(char::is_whitespace) {
+                            match buf.rfind(char::is_whitespace) {
                                 Some(pos) => &buf[..=pos],
                                 None => "",
-                            };
-                            format!("{prefix}{completion} ")
+                            }
                         }
+                    }
+
+                    fn build_completion(buf: &str, completion: &str) -> String {
+                        format!("{}{completion} ", get_prefix(buf))
                     }
 
                     if let Some(cycle) = self.app.viewer.prompt.advance_completion() {
@@ -598,16 +603,7 @@ impl App {
                                 self.app.viewer.prompt.set_current(new_buf);
                             }
                             &[candidate, ..] => {
-                                // Determine the static prefix (everything before the partial token).
-                                let prefix = if buf.ends_with(char::is_whitespace) {
-                                    buf.clone()
-                                } else {
-                                    match buf.rfind(char::is_whitespace) {
-                                        Some(pos) => buf[..=pos].to_owned(),
-                                        None => String::new(),
-                                    }
-                                };
-                                // Show the first candidate and enter cycling mode.
+                                let prefix = get_prefix(&buf).to_owned();
                                 let new_buf = build_completion(&buf, candidate);
                                 self.app.viewer.prompt.set_current(new_buf);
                                 self.app.viewer.status.msg(candidates.join("  "));
@@ -653,29 +649,20 @@ impl App {
 
     fn process_shell(&mut self, command: &str, terminate: bool, pipe: bool) -> Result<bool> {
         let Ok(expanded) = shellexpand::env_with_context(command, |s| self.context(s)) else {
-            self.app
-                .viewer
-                .status
-                .msg("shell: expansion failed".to_string());
+            self.app.viewer.status.msg("shell: expansion failed");
             return Ok(true);
         };
 
         let mut shl = shlex::Shlex::new(&expanded);
         let Some(cmd) = shl.next() else {
-            self.app
-                .viewer
-                .status
-                .msg("shell: no command provided".to_string());
+            self.app.viewer.status.msg("shell: no command provided");
             return Ok(true);
         };
 
         let args = shl.by_ref().collect::<Vec<_>>();
 
         if shl.had_error {
-            self.app
-                .viewer
-                .status
-                .msg("shell: lexing failed".to_string());
+            self.app.viewer.status.msg("shell: lexing failed");
             return Ok(true);
         }
 
@@ -771,11 +758,9 @@ impl App {
     }
 
     fn command_help(&mut self, _: &str) {
-        self.app.viewer.mode = InputMode::Help;
-        self.app
-            .viewer
-            .status
-            .msg("help: displaying help".to_string());
+        let v = self.viewer();
+        v.mode = InputMode::Help;
+        v.status.msg("help: displaying help");
     }
 
     fn command_quit(&mut self, _: &str) {
@@ -787,11 +772,7 @@ impl App {
             Ok(mouse_capture) => {
                 self.app.viewer.status.msg(format!(
                     "mouse capture {}",
-                    if mouse_capture {
-                        "enabled"
-                    } else {
-                        "disabled"
-                    }
+                    if mouse_capture { "enabled" } else { "disabled" }
                 ));
                 self.app
                     .viewer
@@ -801,20 +782,14 @@ impl App {
                     .ok();
             }
             Err(_) => {
-                self.app
-                    .viewer
-                    .status
-                    .msg("mouse capture toggle failed".to_string());
+                self.app.viewer.status.msg("mouse capture toggle failed");
             }
         }
     }
 
     fn command_persist(&mut self, arg: &str) {
         if arg.is_empty() {
-            self.app
-                .viewer
-                .status
-                .msg("usage: persist <path>".to_string());
+            self.app.viewer.status.msg("usage: persist <path>");
             return;
         }
 
@@ -838,34 +813,26 @@ impl App {
                 self.app.viewer.status.msg(format!("realpath: {}", link));
                 self.pbcopy(&link.to_string()).ok();
             } else {
-                self.app.viewer.status.msg("readpath: no link".to_string());
+                self.app.viewer.status.msg("readpath: no link");
             }
         } else {
-            self.app
-                .viewer
-                .status
-                .msg(String::from("No active instances"));
+            self.app.viewer.status.msg("No active instances");
         }
     }
 
     fn command_refresh(&mut self, _: &str) {
         self.refresh = true;
-        self.app
-            .viewer
-            .status
-            .msg("refresh: refresh requested".to_string());
+        self.app.viewer.status.msg("refresh: refresh requested");
     }
 
     fn command_open(&mut self, arg: &str) {
         if arg.is_empty() {
-            self.app.viewer.status.msg("usage: open <path>".to_string());
+            self.viewer().status.msg("usage: open <path>");
             return;
         }
-
         let path = PathBuf::from(arg);
-        if let Err(err) = self.app.viewer.open_file(path.as_ref()) {
-            self.app
-                .viewer
+        if let Err(err) = self.viewer().open_file(path.as_ref()) {
+            self.viewer()
                 .status
                 .msg(format!("{}: {err}", path.display()));
         }
@@ -890,10 +857,7 @@ impl App {
                 Ok(ref text) => {
                     match self.pbcopy(text) {
                         Ok(()) => {
-                            self.app
-                                .viewer
-                                .status
-                                .msg("pbcopy: copied to clipboard".to_string());
+                            self.app.viewer.status.msg("pbcopy: copied to clipboard");
                         }
                         Err(err) => {
                             self.app.viewer.status.msg(format!("pbcopy: {err}"));
@@ -908,70 +872,60 @@ impl App {
     }
 
     fn command_close(&mut self, _: &str) {
-        if self.app.viewer.mux.active_mut().is_some() {
-            self.app.viewer.mux.close_active()
+        let v = self.viewer();
+        if v.mux.active_mut().is_some() {
+            v.mux.close_active()
         } else {
-            self.app
-                .viewer
-                .status
-                .msg(String::from("No active instances"));
+            v.status.msg("No active instances");
         }
     }
 
     fn command_gutter(&mut self, _: &str) {
-        match self.app.viewer.config.settings.toggle_show_gutter() {
-            Err(err) => {
-                self.app.viewer.status.msg(format!("gutter toggle: {err}"));
-            }
-            Ok(show_gutter) => {
-                self.app.viewer.status.msg(format!(
-                    "gutter: {}",
-                    if show_gutter { "enabled" } else { "disabled" }
-                ));
-            }
+        let v = self.viewer();
+        match v.config.settings.toggle_show_gutter() {
+            Err(err) => v.status.msg(format!("gutter toggle: {err}")),
+            Ok(show_gutter) => v.status.msg(format!(
+                "gutter: {}",
+                if show_gutter { "enabled" } else { "disabled" }
+            )),
         }
     }
 
     fn command_mux_tabs(&mut self, _: &str) {
-        self.app.viewer.mux.set_mode(mux::Mode::ActiveOnly);
-        self.app
-            .viewer
-            .status
-            .msg("mux: set to tabs mode".to_string());
+        let v = self.viewer();
+        v.mux.set_mode(mux::Mode::ActiveOnly);
+        v.status.msg("mux: set to tabs mode");
     }
 
     fn command_mux_panes(&mut self, _: &str) {
-        self.app.viewer.mux.set_mode(mux::Mode::SplitView);
-        self.app
-            .viewer
-            .status
-            .msg("mux: set to split view mode".to_string());
+        let v = self.viewer();
+        v.mux.set_mode(mux::Mode::SplitView);
+        v.status.msg("mux: set to split view mode");
     }
 
     fn command_mux(&mut self, _: &str) {
-        self.app
-            .viewer
-            .mux
-            .set_mode(self.app.viewer.mux.mode().swap());
+        let v = self.viewer();
+        let new_mode = v.mux.mode().swap();
+        v.mux.set_mode(new_mode);
     }
 
     fn command_filter_linked(&mut self, _: &str) {
-        self.app.viewer.linked_filters = !self.app.viewer.linked_filters;
-        if self.app.viewer.linked_filters {
-            self.app.viewer.replicate_filters_on_all_instances();
+        let v = self.viewer();
+        v.linked_filters = !v.linked_filters;
+        if v.linked_filters {
+            v.replicate_filters_on_all_instances();
         }
     }
 
     fn command_filter_persist(&mut self, _: &str) {
-        match self.app.viewer.config.settings.toggle_persist_filter() {
+        let v = self.viewer();
+        match v.config.settings.toggle_persist_filter() {
             Err(err) => {
-                self.app.viewer.status.msg(format!("filter persist: {err}"));
+                v.status.msg(format!("filter persist: {err}"));
                 return;
             }
             Ok(new_persistence) => {
-                self.app
-                    .viewer
-                    .status
+                v.status
                     .msg(format!("filter persist: persistence = {new_persistence}"));
             }
         }
@@ -992,9 +946,10 @@ impl App {
         };
         let idx = idx.saturating_sub(1);
         if self.app.viewer.mux.active_index() == idx {
-            self.app.viewer.status.msg(String::from(
-                "filter export: cannot export to active instance",
-            ));
+            self.app
+                .viewer
+                .status
+                .msg("filter export: cannot export to active instance");
             return;
         }
         let Some(target) = self.app.viewer.mux.instances_mut().get_mut(idx) else {
@@ -1019,58 +974,45 @@ impl App {
 
         if let Err(err) = self.app.viewer.config.filters.add_filter(export) {
             self.app.viewer.status.msg(format!("filter save: {err}"));
+            return;
         }
 
-        self.app
-            .viewer
-            .status
-            .msg("filter save: saved filters".to_string());
+        self.app.viewer.status.msg("filter save: saved filters");
     }
 
     fn command_filter_load(&mut self, _: &str) {
-        self.app.viewer.mode = InputMode::Config;
-        self.app
-            .viewer
-            .status
-            .msg("filter load: select filter to load".to_string());
+        let v = self.viewer();
+        v.mode = InputMode::Config;
+        v.status.msg("filter load: select filter to load");
     }
 
     fn command_filter_clear(&mut self, _: &str) {
-        self.app.viewer.demux_mut(|instance| {
+        let v = self.viewer();
+        v.demux_mut(|instance| {
             instance.clear_filters();
         });
-        self.app
-            .viewer
-            .status
-            .msg("filter clear: cleared filters".to_string());
+        v.status.msg("filter clear: cleared filters");
     }
 
     fn command_filter_union(&mut self, _: &str) {
-        self.app.viewer.demux_mut(|instance| {
+        let v = self.viewer();
+        v.demux_mut(|instance| {
             instance.set_composite_strategy(CompositeStrategy::Union);
         });
-        self.app
-            .viewer
-            .status
-            .msg("filter strategy: set to union".to_string());
+        v.status.msg("filter strategy: set to union");
     }
 
     fn command_filter_intersect(&mut self, _: &str) {
-        self.app.viewer.demux_mut(|instance| {
+        let v = self.viewer();
+        v.demux_mut(|instance| {
             instance.set_composite_strategy(CompositeStrategy::Intersection);
         });
-        self.app
-            .viewer
-            .status
-            .msg("filter strategy: set to intersection".to_string());
+        v.status.msg("filter strategy: set to intersection");
     }
 
     fn command_export(&mut self, arg: &str) {
         if arg.is_empty() {
-            self.app
-                .viewer
-                .status
-                .msg("usage: export <path>".to_string());
+            self.app.viewer.status.msg("usage: export <path>");
             return;
         };
         let path = PathBuf::from(arg);
@@ -1094,10 +1036,7 @@ impl App {
                     .msg(format!("{}: export complete", path.display()));
             }
         } else {
-            self.app
-                .viewer
-                .status
-                .msg(String::from("No active instances"));
+            self.app.viewer.status.msg("No active instances");
         }
     }
 }

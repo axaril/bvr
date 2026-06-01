@@ -17,8 +17,11 @@ impl StatusState {
         }
     }
 
-    pub fn msg(&mut self, message: String) {
-        self.msg_with_duration(message, Some(Duration::from_secs(2)))
+    pub fn msg<T>(&mut self, message: T)
+    where
+        T: Into<String>,
+    {
+        self.msg_with_duration(message.into(), Some(Duration::from_secs(2)))
     }
 
     pub fn msg_with_duration(&mut self, message: String, duration: Option<Duration>) {
