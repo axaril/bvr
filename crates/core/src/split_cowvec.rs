@@ -87,13 +87,20 @@ pub struct SplitCowVec<T> {
 }
 
 impl<T> SplitCowVec<T> {
+    /// Constructs a new, empty `SplitCowVec<T>` with default configuration (1024 elements per segment).
+    pub fn new() -> (Arc<Self>, SplitCowVecWriter<T>) {
+        const { assert!(std::mem::size_of::<T>() != 0) };
+        const MB: usize = 1 << 20;
+        Self::new_with_elements_per_segment(2 * MB / std::mem::size_of::<T>())
+    }
+
     /// Constructs a new, empty `SplitCowVec<T>` with a write handle.
     ///
     /// The vector will not allocate until elements are pushed onto it.
     ///
     /// # Arguments
     /// * `elements_per_segment` - Number of elements per segment before creating a new CowVec
-    pub fn new(elements_per_segment: usize) -> (Arc<Self>, SplitCowVecWriter<T>) {
+    pub fn new_with_elements_per_segment(elements_per_segment: usize) -> (Arc<Self>, SplitCowVecWriter<T>) {
         let initial_segments: Arc<Box<[_]>> = Arc::new(Box::new([]));
 
         let cow = Arc::new(Self {
@@ -108,11 +115,6 @@ impl<T> SplitCowVec<T> {
         };
 
         (cow, writer)
-    }
-
-    /// Constructs a new, empty `SplitCowVec<T>` with default configuration (1024 elements per segment).
-    pub fn with_default_config() -> (Arc<Self>, SplitCowVecWriter<T>) {
-        Self::new(1024)
     }
 
     /// Returns the total number of elements across all segments.
@@ -208,7 +210,7 @@ mod tests {
         const TOTAL: usize = 10_000;
         const SEG_SIZE: usize = 256;
 
-        let (vec, mut writer) = SplitCowVec::<usize>::new(SEG_SIZE);
+        let (vec, mut writer) = SplitCowVec::<usize>::new_with_elements_per_segment(SEG_SIZE);
         let barrier = Arc::new(Barrier::new(READER_THREADS + 1));
         let done = Arc::new(AtomicBool::new(false));
 
@@ -256,7 +258,7 @@ mod tests {
         const TOTAL: usize = 5_000;
         const SEG_SIZE: usize = 64;
 
-        let (vec, mut writer) = SplitCowVec::<usize>::new(SEG_SIZE);
+        let (vec, mut writer) = SplitCowVec::<usize>::new_with_elements_per_segment(SEG_SIZE);
         let barrier = Arc::new(Barrier::new(THREADS + 1));
         let done = Arc::new(AtomicBool::new(false));
 
@@ -310,7 +312,7 @@ mod tests {
         const SEG_SIZE: usize = 7; // prime to hit non-power-of-two boundaries
         const READER_THREADS: usize = 6;
 
-        let (vec, mut writer) = SplitCowVec::<usize>::new(SEG_SIZE);
+        let (vec, mut writer) = SplitCowVec::<usize>::new_with_elements_per_segment(SEG_SIZE);
 
         for i in 0..TOTAL {
             writer.push(i);
@@ -351,7 +353,7 @@ mod tests {
         const TOTAL: usize = 500;
         const SEG_SIZE: usize = 32;
 
-        let (vec, mut writer) = SplitCowVec::<usize>::new(SEG_SIZE);
+        let (vec, mut writer) = SplitCowVec::<usize>::new_with_elements_per_segment(SEG_SIZE);
         for i in 0..TOTAL {
             writer.push(i);
         }
@@ -392,7 +394,7 @@ mod tests {
         const TOTAL: usize = 8_000;
         const SEG_SIZE: usize = 8;
 
-        let (vec, mut writer) = SplitCowVec::<usize>::new(SEG_SIZE);
+        let (vec, mut writer) = SplitCowVec::<usize>::new_with_elements_per_segment(SEG_SIZE);
         let barrier = Arc::new(Barrier::new(READER_THREADS + 1));
         let done = Arc::new(AtomicBool::new(false));
 
@@ -436,7 +438,7 @@ mod tests {
 
     #[test]
     fn test_split_cowvec_basic() {
-        let (vec, mut writer) = SplitCowVec::new(5);
+        let (vec, mut writer) = SplitCowVec::new_with_elements_per_segment(5);
 
         for i in 0..12 {
             writer.push(i);
@@ -450,7 +452,7 @@ mod tests {
 
     #[test]
     fn test_split_cowvec_single_segment() {
-        let (vec, mut writer) = SplitCowVec::new(100);
+        let (vec, mut writer) = SplitCowVec::new_with_elements_per_segment(100);
 
         for i in 0..10 {
             writer.push(i);
@@ -464,7 +466,7 @@ mod tests {
 
     #[test]
     fn test_split_cowvec_empty() {
-        let (_vec, _writer) = SplitCowVec::<i32>::with_default_config();
+        let (_vec, _writer) = SplitCowVec::<i32>::new();
         // Writer is dropped, so segments are finalized
         assert!(_vec.is_empty());
         assert_eq!(_vec.segment_count(), 0);
@@ -472,7 +474,7 @@ mod tests {
 
     #[test]
     fn test_split_cowvec_snapshot() {
-        let (vec, mut writer) = SplitCowVec::new(3);
+        let (vec, mut writer) = SplitCowVec::new_with_elements_per_segment(3);
 
         for i in 0..7 {
             writer.push(i);
