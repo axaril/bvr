@@ -1,4 +1,7 @@
-use std::sync::Arc;
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc, Condvar, Mutex,
+};
 
 use arc_swap::ArcSwap;
 
@@ -13,6 +16,7 @@ pub struct SplitCowVecWriter<T> {
     elements_per_segment: usize,
     target: Arc<SplitCowVec<T>>,
     current: Option<CowVecWriter<T>>,
+    last_notified: usize,
 }
 
 impl<T> SplitCowVecWriter<T>
@@ -35,12 +39,33 @@ where
         };
 
         writer.push(elem);
+        self.notify(1);
+    }
+
+    /// Appends all elements from a slice to the back of the split vector,
+    /// creating new segments as needed when the current one fills up.
+    pub fn extend_from_slice(&mut self, mut elems: &[T]) {
+        let total = elems.len();
+
+        while !elems.is_empty() {
+            let eps = self.elements_per_segment;
+            let writer = match self.current.as_mut() {
+                Some(writer) if writer.len() < eps => writer,
+                _ => self.new_segment(),
+            };
+
+            let take = (eps - writer.len()).min(elems.len());
+            writer.extend_from_slice(&elems[..take]);
+            elems = &elems[take..];
+        }
+
+        self.notify(total);
     }
 }
 
 impl<T> SplitCowVecWriter<T> {
     fn new_segment(&mut self) -> &mut CowVecWriter<T> {
-        let (new_segment, writer) = CowVec::new();
+        let (new_segment, writer) = CowVec::with_capacity(self.elements_per_segment);
 
         let segments = self
             .target
@@ -53,6 +78,17 @@ impl<T> SplitCowVecWriter<T> {
 
         self.target.segments.store(Arc::new(segments));
         self.current.insert(writer)
+    }
+
+    fn notify(&mut self, len: usize) {
+        const NOTIFY_INTERVAL: usize = 1 << 14;
+        // Notify readers every NOTIFY_INTERVAL pushes to avoid waking them up too frequently.
+        if self.last_notified + len >= NOTIFY_INTERVAL {
+            self.target.condvar.notify_all();
+            self.last_notified = 0;
+        } else {
+            self.last_notified += len;
+        }
     }
 
     /// Returns the total number of elements written so far.
@@ -74,6 +110,19 @@ impl<T> SplitCowVecWriter<T> {
     pub fn segment_count(&self) -> usize {
         self.target.segments.load().len()
     }
+
+    /// Returns true if any reader (other than this writer's target handle) is
+    /// still alive.
+    pub fn has_readers(&self) -> bool {
+        Arc::strong_count(&self.target) > 1
+    }
+}
+
+impl<T> Drop for SplitCowVecWriter<T> {
+    fn drop(&mut self) {
+        self.target.completed.store(true, Ordering::Release);
+        self.target.condvar.notify_all();
+    }
 }
 
 /// A read-only view of a split copy-on-write vector.
@@ -84,6 +133,10 @@ impl<T> SplitCowVecWriter<T> {
 pub struct SplitCowVec<T> {
     elements_per_segment: usize,
     segments: ArcSwap<Box<[Arc<CowVec<T>>]>>,
+    completed: AtomicBool,
+    /// Used to wake threads blocked in `wait_for_index`.
+    condvar: Condvar,
+    condvar_lock: Mutex<()>,
 }
 
 impl<T> SplitCowVec<T> {
@@ -106,12 +159,16 @@ impl<T> SplitCowVec<T> {
         let cow = Arc::new(Self {
             elements_per_segment,
             segments: ArcSwap::new(initial_segments.clone()),
+            completed: AtomicBool::new(false),
+            condvar: Condvar::new(),
+            condvar_lock: Mutex::new(()),
         });
 
         let writer = SplitCowVecWriter {
             elements_per_segment,
             target: cow.clone(),
             current: None,
+            last_notified: 0,
         };
 
         (cow, writer)
@@ -134,6 +191,35 @@ impl<T> SplitCowVec<T> {
     /// Returns true if the split vector contains no elements.
     pub fn is_empty(&self) -> bool {
         self.len() == 0
+    }
+
+    /// Returns true if the corresponding `SplitCowVecWriter` has been dropped.
+    ///
+    /// When this returns true, no more elements can be added to this vector.
+    pub fn is_complete(&self) -> bool {
+        self.completed.load(Ordering::Acquire)
+    }
+
+    /// Blocks the calling thread until either `len() > idx` or the vector is
+    /// complete (i.e. the writer has been dropped). Returns immediately if the
+    /// condition is already satisfied.
+    pub fn wait_for_index(&self, idx: usize) {
+        // Fast path: avoid acquiring the lock if data is already available.
+        if self.is_complete() || self.len() > idx {
+            return;
+        }
+        // Acquire the condvar lock and re-check the condition inside
+        // `wait_while` to avoid a lost-wakeup between the fast-path check
+        // and actually parking the thread.
+        let guard = self.condvar_lock.lock().unwrap();
+        drop(
+            self.condvar
+                .wait_while(guard, |_| !self.is_complete() && self.len() <= idx),
+        );
+    }
+
+    pub fn wait_complete(&self) {
+        self.wait_for_index(usize::MAX)
     }
 
     /// Takes an atomic snapshot of all segments at the current point in time.
@@ -181,6 +267,11 @@ pub struct SplitCowVecSnapshot<T> {
 }
 
 impl<T> SplitCowVecSnapshot<T> {
+    /// Returns the total number of elements pinned by this snapshot.
+    pub fn len(&self) -> usize {
+        self.snapshots.iter().map(|s| s.len()).sum()
+    }
+
     /// Returns the number of segments in this snapshot.
     pub fn segment_count(&self) -> usize {
         self.snapshots.len()

@@ -12,6 +12,7 @@ use crate::{
     buf::segment::{Segment, SegmentMut},
     cowvec::{CowVec, CowVecWriter},
     err::{Error, Result},
+    split_cowvec::{SplitCowVec, SplitCowVecWriter},
 };
 
 struct IndexingTask<'a> {
@@ -131,7 +132,7 @@ impl_index_type!(u32);
 /// file or a stream.
 pub(crate) struct LineIndexWriter<I> {
     upper: CowVecWriter<(usize, usize)>,
-    lower: CowVecWriter<I>,
+    lower: SplitCowVecWriter<I>,
     report: Arc<ProgressReport>,
     curr_upper: usize,
 }
@@ -140,8 +141,6 @@ impl<I> LineIndexWriter<I>
 where
     I: IndexType,
 {
-    const BYTES_PER_LINE_HEURISTIC: u64 = 128;
-
     fn index_file(mut self, file: File, segment_size: u64) -> Result<()> {
         // Build index
         let (sx, rx) = std::sync::mpsc::sync_channel(4);
@@ -149,8 +148,6 @@ where
         let len = file.metadata()?.len();
         let file = file.try_clone()?;
 
-        self.lower
-            .reserve((len / Self::BYTES_PER_LINE_HEURISTIC) as usize);
         self.lower.push(I::ZERO);
 
         // Indexing worker
@@ -332,7 +329,7 @@ pub struct LineIndex<I = DefaultIndexType> {
     // This allows us to compress the line index by storing only the lower bits of the
     // index in buf, and storing the upper bits in overflow only when necessary.
     upper: Arc<CowVec<(usize, usize)>>,
-    lower: Arc<CowVec<I>>,
+    lower: Arc<SplitCowVec<I>>,
     report: Arc<ProgressReport>,
 }
 
@@ -342,7 +339,7 @@ where
 {
     pub(crate) fn new(report: ProgressReport) -> (Self, LineIndexWriter<I>) {
         let (upper, writer_overflow) = CowVec::new();
-        let (lower, writer) = CowVec::new();
+        let (lower, writer) = SplitCowVec::new();
         let report = Arc::new(report);
         let writer = {
             let report = report.clone();
@@ -353,6 +350,7 @@ where
                 curr_upper: 0,
             }
         };
+
         (
             Self {
                 lower,
