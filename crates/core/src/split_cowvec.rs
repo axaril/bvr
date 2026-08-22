@@ -7,6 +7,14 @@ use arc_swap::ArcSwap;
 
 use crate::cowvec::{CowVec, CowVecSnapshot, CowVecWriter};
 
+/// Rounds `n` down to the nearest power of two, leaving `0` unchanged.
+fn floor_pow2(n: usize) -> usize {
+    match n {
+        0 => 0,
+        n => 1usize << (usize::BITS - 1 - n.leading_zeros()),
+    }
+}
+
 /// An exclusive writer to a `SplitCowVec<T>`.
 ///
 /// This writer manages multiple `CowVec<T>` segments, creating a new segment
@@ -152,8 +160,11 @@ impl<T> SplitCowVec<T> {
     /// The vector will not allocate until elements are pushed onto it.
     ///
     /// # Arguments
-    /// * `elements_per_segment` - Number of elements per segment before creating a new CowVec
+    /// * `elements_per_segment` - Number of elements per segment before creating a new CowVec.
+    ///   Rounded down to the nearest power of two (and thus never exceeds the requested
+    ///   allocation size) so that segment lookups can use a shift/mask instead of division.
     pub fn new_with_elements_per_segment(elements_per_segment: usize) -> (Arc<Self>, SplitCowVecWriter<T>) {
+        let elements_per_segment = floor_pow2(elements_per_segment);
         let initial_segments: Arc<Box<[_]>> = Arc::new(Box::new([]));
 
         let cow = Arc::new(Self {
@@ -244,10 +255,12 @@ where
 {
     /// Returns the element at the given index, or `None` if out of bounds.
     pub fn get(&self, index: usize) -> Option<T> {
-        let eps = self.elements_per_segment;
+        // `elements_per_segment` is always a power of two, so division/modulo
+        // by it can be done with a shift/mask instead.
+        let shift = self.elements_per_segment.trailing_zeros();
         let segments = self.segments.load();
-        let seg = segments.get(index / eps)?;
-        seg.get(index % eps)
+        let seg = segments.get(index >> shift)?;
+        seg.get(index & (self.elements_per_segment - 1))
     }
 
     pub unsafe fn get_unchecked(&self, index: usize) -> T {
@@ -400,7 +413,7 @@ mod tests {
     #[test]
     fn test_concurrent_readers_across_segments() {
         const TOTAL: usize = 3_000;
-        const SEG_SIZE: usize = 7; // prime to hit non-power-of-two boundaries
+        const SEG_SIZE: usize = 7; // rounds down to 4 per segment
         const READER_THREADS: usize = 6;
 
         let (vec, mut writer) = SplitCowVec::<usize>::new_with_elements_per_segment(SEG_SIZE);
@@ -528,6 +541,21 @@ mod tests {
     }
 
     #[test]
+    fn test_floor_pow2_leaves_powers_of_two_unchanged() {
+        for &n in &[1, 2, 4, 8, 16, 64, 1024, 1 << 20] {
+            assert_eq!(floor_pow2(n), n);
+        }
+    }
+
+    #[test]
+    fn test_floor_pow2_rounds_down_non_powers_of_two() {
+        assert_eq!(floor_pow2(3), 2);
+        assert_eq!(floor_pow2(5), 4);
+        assert_eq!(floor_pow2(7), 4);
+        assert_eq!(floor_pow2(100), 64);
+    }
+
+    #[test]
     fn test_split_cowvec_basic() {
         let (vec, mut writer) = SplitCowVec::new_with_elements_per_segment(5);
 
@@ -538,7 +566,7 @@ mod tests {
         drop(writer);
 
         assert_eq!(vec.len(), 12);
-        assert_eq!(vec.segment_count(), 3); // 5 + 5 + 2
+        assert_eq!(vec.segment_count(), 3); // 5 rounds down to 4 per segment: 4 + 4 + 4
     }
 
     #[test]
@@ -574,6 +602,6 @@ mod tests {
         drop(writer);
 
         let snapshot = vec.snapshot();
-        assert_eq!(snapshot.segment_count(), 3);
+        assert_eq!(snapshot.segment_count(), 4);
     }
 }
