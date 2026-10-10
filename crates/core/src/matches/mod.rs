@@ -22,22 +22,32 @@ impl LineMatchWriter {
             if !self.buf.has_readers() {
                 break;
             } else if let Some(segment) = iter.next() {
-                let mut buf_start = 0;
-                while let Some(res) = regex.find_at(segment.data, buf_start as usize) {
-                    let match_start = res.start() as u64 + segment.range.start;
-                    let line_number = segment.index.line_of_data(match_start).unwrap();
+                let data = segment.data;
+                if data.is_empty() {
+                    continue;
+                }
+                let mut line = segment.start_line;
+                let mut counted_to = 0;
 
-                    if let Some(&last) = self.buf.last() {
-                        if last == line_number {
-                            continue;
-                        }
-                        debug_assert!(line_number > last);
+                while let Some(res) = regex.find_at(data, counted_to) {
+                    // An empty match at the end of a segment that ends with a
+                    // newline belongs to the next line, which is not part of
+                    // this segment.
+                    if res.start() == data.len() && data.last() == Some(&b'\n') {
+                        break;
                     }
 
-                    self.buf.push(line_number);
+                    line += memchr::memchr_iter(b'\n', &data[counted_to..res.start()]).count();
 
-                    buf_start =
-                        segment.index.data_of_line(line_number + 1).unwrap() - segment.range.start;
+                    debug_assert!(self.buf.last().is_none_or(|&last| line > last));
+                    self.buf.push(line);
+
+                    // Resume the search at the start of the next line.
+                    let Some(eol) = memchr::memchr(b'\n', &data[res.start()..]) else {
+                        break;
+                    };
+                    line += 1;
+                    counted_to = res.start() + eol + 1;
                 }
             } else if iter.index().is_complete() {
                 break;
@@ -253,6 +263,98 @@ impl From<Vec<usize>> for LineSet {
         Self::Dynamic {
             min_len: vec.len(),
             buf: Arc::new(CowVec::from(vec)),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use regex::bytes::Regex;
+
+    use crate::{
+        buf::segment::Segment,
+        index::ProgressReport,
+        LineIndex, LineSet, SegBuffer,
+    };
+
+    /// Builds a fully indexed buffer out of `data`, split into segments of
+    /// `segment_size` bytes, mirroring how files are indexed.
+    fn buffer(data: &[u8], segment_size: usize) -> (SegBuffer, Vec<std::ops::Range<usize>>) {
+        let mut offsets = vec![0];
+        offsets.extend(memchr::memchr_iter(b'\n', data).map(|i| i + 1));
+        offsets.push(data.len());
+
+        let (index, mut writer) = LineIndex::new(ProgressReport::NONE);
+        for &offset in &offsets {
+            writer.push(offset as u64);
+        }
+        drop(writer);
+
+        let segments = data
+            .chunks(segment_size)
+            .enumerate()
+            .map(|(i, chunk)| {
+                let mut chunk = chunk.to_vec();
+                chunk.resize(segment_size, 0);
+                Segment::from_bytes((i * segment_size) as u64, &chunk)
+            })
+            .collect();
+
+        let lines = offsets.windows(2).map(|w| w[0]..w[1]).collect();
+        (
+            SegBuffer::from_segments(index, segments, segment_size as u64),
+            lines,
+        )
+    }
+
+    fn search(buf: &SegBuffer, regex: &Regex) -> Vec<usize> {
+        let set = LineSet::search(buf.segment_iter().unwrap(), regex.clone());
+        set.wait_for_index(usize::MAX);
+        (0..set.len()).map(|i| set.get(i).unwrap()).collect()
+    }
+
+    #[test]
+    fn search_matches_naive_line_scan() {
+        let inputs: [&[u8]; 3] = [
+            b"ab\nxabcx\n\nc\nzzzzzzzzzzzzzzzzzzzzzzzzab\nabab\nc",
+            b"ab\nxabcx\n\nc\nzzzzzzzzzzzzzzzzzzzzzzzzab\nabab\nc\n",
+            b"\n\nab\n\n",
+        ];
+        let patterns = ["ab", "c", "abc|zz", "x*", "q"];
+
+        for data in inputs {
+            for segment_size in 1..=48 {
+                let (buf, lines) = buffer(data, segment_size);
+                for pattern in patterns {
+                    let regex = Regex::new(pattern).unwrap();
+                    let expected = lines
+                        .iter()
+                        .enumerate()
+                        // The zero-length line after a trailing newline never matches.
+                        .filter(|&(_, range)| !range.is_empty())
+                        .filter(|&(_, range)| regex.is_match(&data[range.clone()]))
+                        .map(|(line, _)| line)
+                        .collect::<Vec<_>>();
+
+                    assert_eq!(
+                        search(&buf, &regex),
+                        expected,
+                        "pattern {pattern:?}, segment size {segment_size}, data {:?}",
+                        String::from_utf8_lossy(data),
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn search_end_anchor_does_not_panic() {
+        let data = b"ab\ncd\nef\n";
+        for segment_size in 1..=12 {
+            let (buf, lines) = buffer(data, segment_size);
+            let found = search(&buf, &Regex::new("$").unwrap());
+            assert!(found.windows(2).all(|w| w[0] < w[1]));
+            assert!(found.iter().all(|&line| line < lines.len()));
         }
     }
 }
