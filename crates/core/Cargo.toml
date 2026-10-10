@@ -18,3 +18,20 @@ tempfile = "3.27"
 
 [dev-dependencies]
 anyhow = "1.0"
+criterion = { version = "0.8", features = ["html_reports"] }
+
+[[bench]]
+name = "indexing"
+harness = false
+
+[[bench]]
+name = "access"
+harness = false
+
+[[bench]]
+name = "search"
+harness = false
+
+[[bench]]
+name = "filters"
+harness = false
