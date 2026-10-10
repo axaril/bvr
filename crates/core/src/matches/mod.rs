@@ -102,6 +102,23 @@ impl LineSet {
         complete: bool,
         strategy: CompositeStrategy,
     ) -> Result<Self> {
+        // `All` contains every line, so it absorbs a union, and has no effect
+        // on an intersection.
+        match strategy {
+            CompositeStrategy::Union => {
+                if let Some(all) = filters.iter().find(|filter| filter.is_all()) {
+                    return Ok(all.clone());
+                }
+            }
+            CompositeStrategy::Intersection => {
+                if filters.iter().all(Self::is_all) {
+                    filters.truncate(1);
+                } else {
+                    filters.retain(|filter| !filter.is_all());
+                }
+            }
+        }
+
         match filters.len() {
             0 => Ok(Self::empty()),
             1 => Ok(filters.remove(0)),
