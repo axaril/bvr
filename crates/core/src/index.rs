@@ -313,11 +313,14 @@ impl<I> Drop for LineIndexWriter<I> {
 }
 
 // Debug builds use a smaller index type to make it easier to catch issues.
-#[cfg(debug_assertions)]
-type DefaultIndexType = u16;
-
-#[cfg(not(debug_assertions))]
-type DefaultIndexType = u32;
+cfg_select! {
+    debug_assertions => {
+        type DefaultIndexType = u16;
+    }
+    _ => {
+        type DefaultIndexType = u32;
+    }
+}
 
 #[derive(Clone)]
 pub struct LineIndex<I = DefaultIndexType> {
