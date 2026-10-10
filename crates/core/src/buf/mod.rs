@@ -251,7 +251,7 @@ impl SegBuffer {
     }
 
     #[cfg(test)]
-    fn from_segments(index: LineIndex, segments: Vec<Segment>, segment_size: u64) -> Self {
+    pub fn from_segments(index: LineIndex, segments: Vec<Segment>, segment_size: u64) -> Self {
         Self {
             index,
             map: BufferMap {
@@ -485,6 +485,7 @@ pub struct ContiguousSegmentIterator {
 
 pub struct ContiguousSegment<'a> {
     pub index: &'a LineIndex,
+    pub start_line: usize,
     pub range: Range<u64>,
     pub data: &'a [u8],
 }
@@ -541,9 +542,11 @@ impl ContiguousSegmentIterator {
             {
                 let range =
                     seg_first.translate_inner_data_range(curr_line_data_start, curr_line_data_end);
+                self.line_range.start += 1;
                 let segment = self.imm_seg.insert(seg_first);
                 return Some(ContiguousSegment {
                     index: &self.index,
+                    start_line: curr_line,
                     range: curr_line_data_start..curr_line_data_end,
                     data: &segment[range.start as usize..range.end as usize],
                 });
@@ -570,6 +573,7 @@ impl ContiguousSegmentIterator {
 
             Some(ContiguousSegment {
                 index: &self.index,
+                start_line: curr_line,
                 range: curr_line_data_start..curr_line_data_end,
                 data: &self.imm_buf,
             })
@@ -598,6 +602,7 @@ impl ContiguousSegmentIterator {
             // line must end at the boundary
             Some(ContiguousSegment {
                 index: &self.index,
+                start_line: curr_line,
                 range: curr_line_data_start..line_end_data_start,
                 data: &segment[range.start as usize..range.end as usize],
             })
@@ -790,5 +795,28 @@ mod tests {
         assert_eq!(item.data, &[45, 46, 47, 48, 49]);
         assert_eq!(item.range, 45..50);
         Ok(())
+    }
+
+    /// The last line ends exactly at the end of the last segment, with no
+    /// trailing newline. The iterator must yield it once and then stop.
+    #[test]
+    fn last_line_ending_on_segment_boundary() {
+        let (index, mut writer) = LineIndex::new(ProgressReport::NONE);
+        for offset in [0, 3, 4] {
+            writer.push(offset);
+        }
+        drop(writer);
+
+        // "ab\nc" in two segments of 2 bytes: "ab" | "\nc"
+        let segments = vec![Segment::from_bytes(0, b"ab"), Segment::from_bytes(2, b"\nc")];
+        let buffer = SegBuffer::from_segments(index, segments, 2);
+        let mut iter = buffer.segment_iter().unwrap();
+
+        let mut yielded = Vec::new();
+        while let Some(segment) = iter.next() {
+            yielded.push((segment.start_line, segment.data.to_vec()));
+            assert!(yielded.len() <= 10, "iterator did not terminate: {yielded:?}");
+        }
+        assert_eq!(yielded, vec![(0, b"ab\n".to_vec()), (1, b"c".to_vec())]);
     }
 }
