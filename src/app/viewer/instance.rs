@@ -38,6 +38,13 @@ impl Instance {
         }
     }
 
+    /// Whether work in the background is still changing what this instance shows.
+    pub fn is_busy(&self) -> bool {
+        !self.buf.index().is_complete()
+            || !self.view.composite().is_complete()
+            || self.compositor.filters().iter().any(|f| !f.is_complete())
+    }
+
     pub fn buf(&self) -> &SegBuffer {
         &self.buf
     }

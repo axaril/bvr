@@ -34,6 +34,11 @@ impl StatusState {
         }
     }
 
+    /// Whether the message expires, which is only noticed by looking at it again.
+    pub fn is_timed(&self) -> bool {
+        self.timestamp.is_some()
+    }
+
     pub fn get_message_update(&mut self) -> Option<Cow<'_, str>> {
         if let Some((time, dur)) = self.timestamp {
             if time.elapsed() > dur {

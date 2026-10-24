@@ -233,32 +233,46 @@ impl App {
     }
 
     fn event_loop(&mut self) -> Result<()> {
+        // Frames are drawn at most this often, even when events arrive faster.
+        const MIN_REFRESH_DURATION: Duration = Duration::from_millis(16);
+        // How often to check on background work, like indexing and searching.
+        const BUSY_POLL_DURATION: Duration = Duration::from_millis(32);
+        // Nothing changes on its own while idle, so only an event needs to wake us.
+        const IDLE_POLL_DURATION: Duration = Duration::from_millis(500);
+
         let mut mouse_handler = EventHandler::new();
 
         let mut last_drawn: Option<Instant> = None;
+        // Whether the screen may differ from what was last drawn.
+        let mut dirty = true;
+        let mut was_busy = false;
         loop {
             mouse_handler.set_accept_mouse(self.term.mouse_capture());
 
             if self.refresh {
                 self.term.clear()?;
                 self.refresh = false;
+                dirty = true;
             }
 
+            // Background work changes what is shown without any event. Draw once
+            // more after it ends, as it may have finished after the last draw.
+            let busy = self.app.viewer.is_busy();
+            dirty |= busy || was_busy;
+            was_busy = busy;
+
+            let throttled_for =
+                last_drawn.and_then(|last| MIN_REFRESH_DURATION.checked_sub(last.elapsed()));
+
+            let pending_mouse = mouse_handler.has_pending_mouse();
             let mut render =
                 |f: &mut ratatui::Frame| self.app.viewer.ui(f, &self.commands, &mut mouse_handler);
 
-            const MIN_REFRESH_DURATION: Duration = Duration::from_millis(16);
-            const MIN_POLL_DURATION: Duration = Duration::from_millis(32);
-
-            let now = Instant::now();
-
-            if last_drawn
-                .map(|last_drawn| now.duration_since(last_drawn) > MIN_REFRESH_DURATION)
-                .unwrap_or(true)
-            {
+            if dirty && throttled_for.is_none() {
                 self.term.draw(render)?;
-                last_drawn = Some(now);
-            } else if self.term.mouse_capture() {
+                last_drawn = Some(Instant::now());
+                dirty = false;
+            } else if pending_mouse {
                 // We render to capture mouse actions
                 render(&mut self.term.get_frame());
                 // But we avoid drawing so terminal won't look weird
@@ -271,16 +285,27 @@ impl App {
                 .or_else(|| mouse_handler.extract())
             {
                 Some(action) => action,
-                None if event::poll(MIN_POLL_DURATION)? => {
+                None => {
+                    let timeout = match throttled_for {
+                        // Redraw as soon as the throttle allows.
+                        Some(remaining) if dirty => remaining,
+                        _ if busy => BUSY_POLL_DURATION,
+                        _ => IDLE_POLL_DURATION,
+                    };
+                    if !event::poll(timeout)? {
+                        continue;
+                    }
                     let mut event = event::read()?;
+                    // Mouse events only change the screen through their actions.
+                    dirty |= !matches!(event, event::Event::Mouse(_));
                     let key = self.app.keybinds.map_key(self.app.viewer.mode, &mut event);
                     mouse_handler.publish_event(event);
                     let Some(action) = key else { continue };
                     action
                 }
-                None => continue,
             };
 
+            dirty = true;
             if !self.process_action(action)? {
                 break Ok(());
             }
@@ -1074,6 +1099,12 @@ pub struct Viewer {
 }
 
 impl Viewer {
+    /// Whether background work is changing what is shown, so it needs to be redrawn
+    /// even without any events.
+    fn is_busy(&self) -> bool {
+        self.status.is_timed() || self.mux.iter().any(Instance::is_busy)
+    }
+
     pub fn new() -> Self {
         Self {
             mode: InputMode::Normal,

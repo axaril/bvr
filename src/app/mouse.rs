@@ -1,5 +1,5 @@
 use super::actions::Action;
-use crossterm::event::{Event, MouseEvent};
+use crossterm::event::{Event, MouseEvent, MouseEventKind};
 use ratatui::layout::Rect;
 
 pub struct EventHandler {
@@ -24,6 +24,13 @@ impl EventHandler {
     #[inline]
     pub fn publish_event(&mut self, event: Event) {
         self.event = Some(event);
+    }
+
+    /// Whether the published event is a mouse event that can trigger an action.
+    #[inline]
+    pub fn has_pending_mouse(&self) -> bool {
+        self.accept_mouse
+            && matches!(&self.event, Some(Event::Mouse(mouse)) if mouse.kind != MouseEventKind::Moved)
     }
 
     pub fn on_mouse<F>(&mut self, area: Rect, cb: F)

@@ -45,6 +45,10 @@ impl MultiplexerApp {
         self.instances.push(instance);
     }
 
+    pub fn iter(&self) -> impl Iterator<Item = &Instance> {
+        self.instances.iter()
+    }
+
     pub fn instances_mut(&mut self) -> &mut Vec<Instance> {
         &mut self.instances
     }
