@@ -11,7 +11,7 @@ use std::{
     sync::{
         atomic::AtomicU64,
         mpsc::{Receiver, TryRecvError},
-        Arc,
+        Arc, Mutex, PoisonError,
     },
 };
 
@@ -40,9 +40,66 @@ struct BufferMap {
     segment_size: u64,
 }
 
-struct StreamInner {
+/// Segments received from a stream, shared by a buffer and its iterators.
+struct StreamSource {
     segment_rx: Option<Receiver<Arc<Segment>>>,
     segments: Vec<Arc<Segment>>,
+}
+
+impl StreamSource {
+    /// Takes in the segments that have been sent so far.
+    fn receive(&mut self) {
+        let Some(rx) = &self.segment_rx else {
+            return;
+        };
+        loop {
+            match rx.try_recv() {
+                Ok(segment) => {
+                    #[cfg(debug_assertions)]
+                    if let Some(first_segment) = self.segments.first() {
+                        debug_assert_eq!(first_segment.len(), segment.len())
+                    }
+                    self.segments.push(segment)
+                }
+                Err(TryRecvError::Empty) => break,
+                Err(TryRecvError::Disconnected) => {
+                    self.segment_rx = None;
+                    break;
+                }
+            }
+        }
+    }
+}
+
+#[derive(Clone)]
+struct StreamInner {
+    source: Arc<Mutex<StreamSource>>,
+    /// The segments taken from `source` so far, which are read without locking.
+    segments: Vec<Arc<Segment>>,
+}
+
+impl StreamInner {
+    fn new(source: StreamSource) -> Self {
+        Self {
+            segments: source.segments.clone(),
+            source: Arc::new(Mutex::new(source)),
+        }
+    }
+
+    /// Takes in the segments received since the last sync.
+    fn sync(&mut self) {
+        let mut source = self.source.lock().unwrap_or_else(PoisonError::into_inner);
+        source.receive();
+        self.segments
+            .extend_from_slice(&source.segments[self.segments.len()..]);
+    }
+
+    fn fetch(&mut self, seg_id: usize) -> Option<Arc<Segment>> {
+        if seg_id >= self.segments.len() {
+            self.sync();
+        }
+        self.segments.get(seg_id).cloned()
+    }
 }
 
 struct FileInner {
@@ -140,31 +197,7 @@ impl BufferMap {
 
                 Some(inner.borrow_mut().fetch(file, range, seg_id))
             }
-            BufferRepr::Stream(inner) => {
-                let StreamInner {
-                    segment_rx,
-                    segments,
-                } = &mut *inner.borrow_mut();
-                if let Some(rx) = segment_rx {
-                    loop {
-                        match rx.try_recv() {
-                            Ok(segment) => {
-                                #[cfg(debug_assertions)]
-                                if let Some(first_segment) = segments.first() {
-                                    debug_assert_eq!(first_segment.len(), segment.len())
-                                }
-                                segments.push(segment)
-                            }
-                            Err(TryRecvError::Empty) => break,
-                            Err(TryRecvError::Disconnected) => {
-                                *segment_rx = None;
-                                break;
-                            }
-                        }
-                    }
-                }
-                segments.get(seg_id).cloned()
-            }
+            BufferRepr::Stream(inner) => inner.borrow_mut().fetch(seg_id),
             BufferRepr::FileBackedStream { file, len, inner } => {
                 let len = len.load(std::sync::atomic::Ordering::Acquire);
 
@@ -207,10 +240,10 @@ impl SegBuffer {
         Ok(Self {
             index,
             map: BufferMap {
-                repr: BufferRepr::Stream(RefCell::new(StreamInner {
+                repr: BufferRepr::Stream(RefCell::new(StreamInner::new(StreamSource {
                     segment_rx: Some(rx),
                     segments: Vec::new(),
-                })),
+                }))),
                 segment_size: Self::SEGMENT_SIZE,
             },
         })
@@ -255,7 +288,7 @@ impl SegBuffer {
         Self {
             index,
             map: BufferMap {
-                repr: BufferRepr::Stream(RefCell::new(StreamInner {
+                repr: BufferRepr::Stream(RefCell::new(StreamInner::new(StreamSource {
                     segment_rx: None,
                     segments: segments
                         .into_iter()
@@ -264,7 +297,7 @@ impl SegBuffer {
                         })
                         .map(Arc::new)
                         .collect(),
-                })),
+                }))),
                 segment_size,
             },
         }
@@ -351,10 +384,7 @@ impl SegBuffer {
                 self.index.clone(),
                 0..usize::MAX,
                 BufferMap {
-                    repr: BufferRepr::Stream(RefCell::new(StreamInner {
-                        segment_rx: None,
-                        segments: inner.borrow().segments.clone(),
-                    })),
+                    repr: BufferRepr::Stream(RefCell::new(inner.borrow().clone())),
                     segment_size: self.map.segment_size,
                 },
             )),
@@ -402,7 +432,8 @@ impl SegBuffer {
                 }
                 BufferRepr::Stream(inner) => {
                     let mut writer = BufWriter::new(output);
-                    let inner = inner.borrow();
+                    let mut inner = inner.borrow_mut();
+                    inner.sync();
 
                     for seg in inner.segments.iter() {
                         writer.write_all(seg)?;
@@ -438,7 +469,8 @@ impl SegBuffer {
                     file.read_to_string(output)?;
                 }
                 BufferRepr::Stream(inner) => {
-                    let inner = inner.borrow();
+                    let mut inner = inner.borrow_mut();
+                    inner.sync();
 
                     for seg in inner.segments.iter() {
                         let mut reader = Cursor::new(&seg[..]);
@@ -623,6 +655,30 @@ mod tests {
         index::ProgressReport,
         LineIndex,
     };
+
+    /// Searching a stream sees segments received after the search started,
+    /// even if nothing has read from the buffer itself.
+    #[test]
+    fn stream_search_sees_later_segments() {
+        let line_count = 400_000;
+        let data = (0..line_count)
+            .map(|i| format!("line {i}{}\n", if i % 1000 == 0 { " match" } else { "" }))
+            .collect::<String>();
+        // Spans several segments, most of which arrive after the search starts.
+        assert!(data.len() as u64 > 3 * SegBuffer::SEGMENT_SIZE);
+
+        let buf = SegBuffer::read_stream(Box::new(std::io::Cursor::new(data))).unwrap();
+        let matches = crate::LineSet::search(
+            buf.segment_iter().unwrap(),
+            regex::bytes::Regex::new("match").unwrap(),
+        );
+        matches.wait_for_index(usize::MAX);
+
+        let found = (0..matches.len())
+            .map(|i| matches.get(i).unwrap())
+            .collect::<Vec<_>>();
+        assert_eq!(found, (0..line_count).step_by(1000).collect::<Vec<_>>());
+    }
 
     #[test]
     fn file_stream_consistency_1() -> Result<()> {
