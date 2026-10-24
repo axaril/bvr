@@ -1,4 +1,9 @@
-use crate::{app::filters, direction::Direction, view_bounds::ViewBounds};
+use crate::{
+    app::filters,
+    direction::Direction,
+    text::{is_printable_ascii, strip_terminator},
+    view_bounds::ViewBounds,
+};
 
 use bvr_core::{LineSet, SegBuffer, SegStr};
 use ratatui::style::Color;
@@ -36,9 +41,17 @@ impl CachedLine {
 
     fn compute_breaks(data: &str, width: usize) -> Vec<usize> {
         // The line terminator stays on the last row rather than spilling onto a row of its own.
-        let content = data.strip_suffix('\n').unwrap_or(data);
-        let content = content.strip_suffix('\r').unwrap_or(content);
+        let content = strip_terminator(data);
 
+        // Every character takes a column, so rows are simply `width` bytes long.
+        if is_printable_ascii(content) {
+            return (width..content.len()).step_by(width).collect();
+        }
+
+        Self::compute_breaks_by_width(content, width)
+    }
+
+    fn compute_breaks_by_width(content: &str, width: usize) -> Vec<usize> {
         let mut breaks = Vec::new();
         let mut col = 0;
         for (idx, grapheme) in content.grapheme_indices(true) {
@@ -467,6 +480,20 @@ mod test {
         assert_eq!(row_strs(&line("a漢字b", 4)), ["a漢", "字b"]);
         // A grapheme wider than the view still gets a row to itself.
         assert_eq!(row_strs(&line("漢字", 1)), ["漢", "字"]);
+    }
+
+    #[test]
+    fn ascii_breaks_agree_with_segmentation() {
+        for len in 0..40 {
+            let data = "x".repeat(len);
+            for width in 1..12 {
+                assert_eq!(
+                    CachedLine::compute_breaks(&data, width),
+                    CachedLine::compute_breaks_by_width(&data, width),
+                    "len {len}, width {width}"
+                );
+            }
+        }
     }
 
     #[test]

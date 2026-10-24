@@ -10,7 +10,7 @@ use crossterm::event::MouseEventKind;
 use ratatui::prelude::*;
 use regex::bytes::Regex;
 use std::ops::Range;
-use unicode_segmentation::UnicodeSegmentation;
+use crate::text::clip_columns;
 
 pub struct ViewWidget<'a> {
     view_index: usize,
@@ -186,23 +186,9 @@ impl ViewerLineWidget<'_> {
         }
 
         let row_start = line.row_start(self.row);
-        let (data, window) = {
-            let data = line.row(self.row);
-            let mut chars = data.grapheme_indices(true);
-            let start = chars
-                .nth(self.parent.left)
-                .map(|(idx, _)| idx)
-                .unwrap_or(data.len());
-            let end = chars
-                .nth(data_chunk.width as usize)
-                .map(|(idx, _)| idx)
-                .unwrap_or(data.len());
-
-            (
-                data.get(start..end).unwrap_or("Bad char boundary handling"),
-                row_start + start..row_start + end,
-            )
-        };
+        let window = clip_columns(line.row(self.row), self.parent.left, data_chunk.width as usize);
+        let data = &line.row(self.row)[window.clone()];
+        let window = row_start + window.start..row_start + window.end;
 
         let mut line_widget = match self.parent.regex {
             Some((color, _)) if !self.matches.is_empty() => {
