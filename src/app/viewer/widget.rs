@@ -16,6 +16,7 @@ pub struct ViewWidget<'a> {
     instance: &'a mut Instance,
     show_selection: bool,
     gutter: Option<u16>,
+    wrap: bool,
     regex: Option<(Color, &'a Regex)>,
     left: usize,
 }
@@ -26,6 +27,7 @@ impl<'a> ViewWidget<'a> {
         instance: &'a mut Instance,
         show_selection: bool,
         show_gutter: bool,
+        wrap: bool,
         regex: Option<(Color, &'a Regex)>,
     ) -> Self {
         Self {
@@ -33,29 +35,47 @@ impl<'a> ViewWidget<'a> {
             show_selection,
             gutter: show_gutter
                 .then(|| (instance.total_line_count().max(1).ilog10() as u16 + 1).max(4)),
-            left: instance.view_bounds().left(),
+            wrap,
+            left: if wrap {
+                0
+            } else {
+                instance.view_bounds().left()
+            },
             regex,
             instance,
+        }
+    }
+
+    /// Width taken up by the gutter and selection columns, to the left of the line contents.
+    fn data_offset(&self) -> u16 {
+        if self.gutter.is_none() && !self.show_selection {
+            0
+        } else {
+            self.gutter.unwrap_or(0) + ViewerLineWidget::SPECIAL_SIZE
         }
     }
 
     pub fn render(self, area: Rect, buf: &mut Buffer, handle: &mut EventHandler) {
         let cursor_state = self.instance.cursor().state();
 
-        self.instance
-            .update_view_bounds(area.height as usize, area.width as usize);
+        self.instance.update_view_bounds(
+            area.height as usize,
+            area.width.saturating_sub(self.data_offset()) as usize,
+            self.wrap,
+        );
 
         self.instance.populate_view();
         let view = self.instance.view_cache();
 
         (area.y..area.bottom())
             .zip(view.map(Some).chain(std::iter::repeat(None)))
-            .for_each(|(y, line_data)| {
+            .for_each(|(y, row_data)| {
                 ViewerLineWidget {
                     parent: &self,
-                    line_data,
-                    ty: line_data
-                        .map(|line| GutterType::map_cursor_state(cursor_state, line.index))
+                    line_data: row_data.map(|(line, _)| line),
+                    row: row_data.map_or(0, |(_, row)| row),
+                    ty: row_data
+                        .map(|(line, _)| GutterType::map_cursor_state(cursor_state, line.index))
                         .unwrap_or_default(),
                 }
                 .render(Rect::new(area.x, y, area.width, 1), buf, handle);
@@ -78,13 +98,15 @@ struct ViewerLineWidget<'a> {
     parent: &'a ViewWidget<'a>,
 
     line_data: Option<&'a CachedLine>,
+    /// Visual row of `line_data` being rendered, nonzero for wrapped continuations.
+    row: usize,
     ty: GutterType,
 }
 
 impl ViewerLineWidget<'_> {
-    fn split_line(&self, area: Rect) -> (Option<Rect>, Option<Rect>, Rect) {
-        const SPECIAL_SIZE: u16 = 3;
+    const SPECIAL_SIZE: u16 = 3;
 
+    fn split_line(&self, area: Rect) -> (Option<Rect>, Option<Rect>, Rect) {
         if self.parent.gutter.is_none() && !self.parent.show_selection {
             return (None, None, area);
         }
@@ -98,8 +120,10 @@ impl ViewerLineWidget<'_> {
         cursor_chunk.width = 3;
 
         let mut data_chunk = area;
-        data_chunk.x += gutter_size + SPECIAL_SIZE;
-        data_chunk.width = data_chunk.width.saturating_sub(gutter_size + SPECIAL_SIZE);
+        data_chunk.x += gutter_size + Self::SPECIAL_SIZE;
+        data_chunk.width = data_chunk
+            .width
+            .saturating_sub(gutter_size + Self::SPECIAL_SIZE);
 
         (Some(gutter_chunk), Some(cursor_chunk), data_chunk)
     }
@@ -119,7 +143,9 @@ impl ViewerLineWidget<'_> {
             return;
         };
 
-        if let Some(gutter_chunk) = gutter_chunk {
+        if let Some(gutter_chunk) = gutter_chunk
+            && self.row == 0
+        {
             let mut itoa_buf = itoa::Buffer::new();
             let ln_str = itoa_buf.format(line.line_number + 1);
             let ln = Line::raw(ln_str).alignment(Alignment::Right).fg(
@@ -136,13 +162,18 @@ impl ViewerLineWidget<'_> {
         if let Some(type_chunk) = cursor_chunk
             && self.parent.show_selection
         {
-            Span::raw(self.ty.to_gutter())
+            let marker = if self.row == 0 {
+                self.ty.to_gutter()
+            } else {
+                self.ty.to_continuation_gutter()
+            };
+            Span::raw(marker)
                 .fg(colors::SELECT_ACCENT)
                 .render(type_chunk, buf);
         }
 
         let data = {
-            let data = &line.data;
+            let data = line.row(self.row);
             let mut chars = data.grapheme_indices(true);
             let start = chars
                 .nth(self.parent.left)

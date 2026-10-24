@@ -85,8 +85,13 @@ impl Instance {
             .and_then(|ln| self.view.composite().find(ln))
     }
 
-    pub fn update_view_bounds(&mut self, height: usize, width: usize) {
-        self.view.fit(height, width);
+    /// One past the view index of the last fully visible line.
+    pub fn view_bottom(&self) -> usize {
+        self.view.bottom()
+    }
+
+    pub fn update_view_bounds(&mut self, height: usize, width: usize, wrap: bool) {
+        self.view.fit(height, width, wrap);
         self.view.set_end_index(self.visible_line_count());
     }
 
@@ -94,7 +99,7 @@ impl Instance {
         self.view.populate(&self.buf, Some(&self.compositor));
     }
 
-    pub fn view_cache(&self) -> impl Iterator<Item = &CachedLine> {
+    pub fn view_cache(&self) -> impl Iterator<Item = (&CachedLine, usize)> {
         self.view.view()
     }
 
@@ -128,9 +133,8 @@ impl Instance {
         };
         if current < self.view.view_bounds().top() {
             self.cursor.place(self.view.view_bounds().top());
-        } else if current >= self.view.view_bounds().bottom() {
-            self.cursor
-                .place(self.view.view_bounds().bottom().saturating_sub(1));
+        } else if current >= self.view.bottom() {
+            self.cursor.place(self.view.bottom().saturating_sub(1));
         }
     }
 
@@ -142,7 +146,7 @@ impl Instance {
             ViewDelta::Boundary => {
                 let top = match dir {
                     Direction::Back => 0,
-                    Direction::Next => self.view.view_bounds().bottom().saturating_sub(1),
+                    Direction::Next => self.view.bottom().saturating_sub(1),
                 };
                 self.jump_vertically_to(top);
                 self.view.set_follow_output(false);

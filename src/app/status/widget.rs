@@ -105,7 +105,7 @@ impl<'a> Widget for StatusWidget<'a> {
             if instance.is_following_output() {
                 Line::raw("Follow  ").fg(colors::STATUS_BAR_TEXT)
             } else {
-                let bottom = instance.view_bounds().bottom();
+                let bottom = instance.view_bottom();
                 let ln_vis = instance.visible_line_count();
                 let percentage = if ln_vis == 0 {
                     1.0

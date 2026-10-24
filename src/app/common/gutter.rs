@@ -70,4 +70,13 @@ impl GutterType {
             "   "
         }
     }
+
+    /// Marker for the wrapped continuation rows of a line.
+    pub const fn to_continuation_gutter(self) -> &'static str {
+        if self.intersects(GutterType::OriginStart.union(GutterType::Within)) {
+            " │ "
+        } else {
+            "   "
+        }
+    }
 }

@@ -189,6 +189,10 @@ impl App {
                     .aliases(&["g"])
                     .description("Toggle the gutter line numbers.")
                     .bind(Self::command_gutter),
+                Command::new("wrap")
+                    .aliases(&["w"])
+                    .description("Toggle line wrapping.")
+                    .bind(Self::command_wrap),
             ]),
     ];
 
@@ -891,6 +895,17 @@ impl App {
         }
     }
 
+    fn command_wrap(&mut self, _: &str) {
+        let v = self.viewer();
+        match v.config.settings.toggle_wrap() {
+            Err(err) => v.status.msg(format!("wrap toggle: {err}")),
+            Ok(wrap) => v.status.msg(format!(
+                "wrap: {}",
+                if wrap { "enabled" } else { "disabled" }
+            )),
+        }
+    }
+
     fn command_mux_tabs(&mut self, _: &str) {
         let v = self.viewer();
         v.mux.set_mode(mux::Mode::ActiveOnly);
@@ -1287,6 +1302,7 @@ impl Viewer {
                     instance,
                     self.mode == InputMode::Visual,
                     self.config.settings.show_gutter(),
+                    self.config.settings.wrap(),
                     regex,
                 )
                 .render(pane_chunk, buf, handler);

@@ -11,6 +11,8 @@ struct LoadedSettings {
     mouse_capture: bool,
     #[serde(default = "LoadedSettings::default_persist_filter")]
     persist_filter: bool,
+    #[serde(default = "LoadedSettings::default_wrap")]
+    wrap: bool,
 }
 
 impl Default for LoadedSettings {
@@ -19,6 +21,7 @@ impl Default for LoadedSettings {
             show_gutter: Self::default_show_gutter(),
             mouse_capture: Self::default_mouse_capture(),
             persist_filter: Self::default_persist_filter(),
+            wrap: Self::default_wrap(),
         }
     }
 }
@@ -33,6 +36,10 @@ impl LoadedSettings {
     }
 
     fn default_persist_filter() -> bool {
+        false
+    }
+
+    fn default_wrap() -> bool {
         false
     }
 }
@@ -91,6 +98,17 @@ impl SettingsConfigState {
         self.inner.load_read_save(|data| {
             data.persist_filter = !data.persist_filter;
             data.persist_filter
+        })
+    }
+
+    pub fn wrap(&self) -> bool {
+        self.inner.read(|data| data.wrap).unwrap_or(false)
+    }
+
+    pub fn toggle_wrap(&mut self) -> Result<bool> {
+        self.inner.load_read_save(|data| {
+            data.wrap = !data.wrap;
+            data.wrap
         })
     }
 }
