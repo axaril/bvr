@@ -9,6 +9,7 @@ use crate::{app::actions::VisualAction, colors, direction::Direction};
 use crossterm::event::MouseEventKind;
 use ratatui::prelude::*;
 use regex::bytes::Regex;
+use std::ops::Range;
 use unicode_segmentation::UnicodeSegmentation;
 
 pub struct ViewWidget<'a> {
@@ -67,11 +68,21 @@ impl<'a> ViewWidget<'a> {
         self.instance.populate_view();
         let view = self.instance.view_cache();
 
+        // Matches of the line being rendered, found once on the whole line so
+        // that wrapped rows and horizontal scrolling can't change them.
+        let mut matches: Option<(usize, Vec<Range<usize>>)> = None;
+
         (area.y..area.bottom())
             .zip(view.map(Some).chain(std::iter::repeat(None)))
             .for_each(|(y, row_data)| {
+                if let (Some((_, regex)), Some((line, _))) = (self.regex, row_data) {
+                    if matches.as_ref().is_none_or(|(index, _)| *index != line.index) {
+                        matches = Some((line.index, match_ranges(regex, &line.data)));
+                    }
+                }
                 ViewerLineWidget {
                     parent: &self,
+                    matches: matches.as_ref().map_or(&[], |(_, m)| m.as_slice()),
                     line_data: row_data.map(|(line, _)| line),
                     row: row_data.map_or(0, |(_, row)| row),
                     ty: row_data
@@ -98,6 +109,8 @@ struct ViewerLineWidget<'a> {
     parent: &'a ViewWidget<'a>,
 
     line_data: Option<&'a CachedLine>,
+    /// Byte ranges of `line_data` that match the highlighted regex.
+    matches: &'a [Range<usize>],
     /// Visual row of `line_data` being rendered, nonzero for wrapped continuations.
     row: usize,
     ty: GutterType,
@@ -172,7 +185,8 @@ impl ViewerLineWidget<'_> {
                 .render(type_chunk, buf);
         }
 
-        let data = {
+        let row_start = line.row_start(self.row);
+        let (data, window) = {
             let data = line.row(self.row);
             let mut chars = data.grapheme_indices(true);
             let start = chars
@@ -184,22 +198,17 @@ impl ViewerLineWidget<'_> {
                 .map(|(idx, _)| idx)
                 .unwrap_or(data.len());
 
-            data.get(start..end).unwrap_or("Bad char boundary handling")
+            (
+                data.get(start..end).unwrap_or("Bad char boundary handling"),
+                row_start + start..row_start + end,
+            )
         };
 
-        let mut line_widget = if let Some((color, regex)) = self.parent.regex
-            && let Some(m) = regex.find(data.as_bytes())
-        {
-            let start = m.start();
-            let end = m.end();
-            let spans = vec![
-                Span::raw(&data[..start]),
-                Span::raw(&data[start..end]).bg(color),
-                Span::raw(&data[end..]),
-            ];
-            Line::from(spans)
-        } else {
-            Line::raw(data)
+        let mut line_widget = match self.parent.regex {
+            Some((color, _)) if !self.matches.is_empty() => {
+                Line::from(highlight_spans(&line.data, window, self.matches, color))
+            }
+            _ => Line::raw(data),
         };
 
         line_widget.style.fg = Some(line.color);
@@ -218,5 +227,113 @@ impl ViewerLineWidget<'_> {
                 _ => None,
             });
         }
+    }
+}
+
+/// Byte ranges of the non-empty matches of `regex` in the content of `line`.
+fn match_ranges(regex: &Regex, line: &str) -> Vec<Range<usize>> {
+    let content = line.strip_suffix('\n').unwrap_or(line);
+    let content = content.strip_suffix('\r').unwrap_or(content);
+
+    regex
+        .find_iter(content.as_bytes())
+        .map(|m| m.range())
+        .filter(|range| {
+            !range.is_empty()
+                && content.is_char_boundary(range.start)
+                && content.is_char_boundary(range.end)
+        })
+        .collect()
+}
+
+/// Splits `window` of `line` into spans, highlighting the parts covered by `matches`.
+fn highlight_spans<'a>(
+    line: &'a str,
+    window: Range<usize>,
+    matches: &[Range<usize>],
+    color: Color,
+) -> Vec<Span<'a>> {
+    let mut spans = Vec::new();
+    let mut at = window.start;
+    for m in matches {
+        if m.end <= window.start {
+            continue;
+        }
+        if m.start >= window.end {
+            break;
+        }
+        let (start, end) = (m.start.max(window.start), m.end.min(window.end));
+        if start > at {
+            spans.push(Span::raw(&line[at..start]));
+        }
+        spans.push(Span::raw(&line[start..end]).bg(color));
+        at = end;
+    }
+    if at < window.end {
+        spans.push(Span::raw(&line[at..window.end]));
+    }
+    spans
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    fn rendered(line: &str, window: Range<usize>, regex: &str) -> Vec<(String, bool)> {
+        let matches = match_ranges(&Regex::new(regex).unwrap(), line);
+        highlight_spans(line, window, &matches, Color::Red)
+            .into_iter()
+            .map(|span| (span.content.to_string(), span.style.bg.is_some()))
+            .collect()
+    }
+
+    #[test]
+    fn match_across_a_wrap_break_is_highlighted_on_both_rows() {
+        let line = "abcdefghij";
+        // Wrapped at 4 columns: "abcd", "efgh", "ij".
+        assert_eq!(
+            rendered(line, 0..4, "cdef"),
+            [("ab".into(), false), ("cd".into(), true)]
+        );
+        assert_eq!(
+            rendered(line, 4..8, "cdef"),
+            [("ef".into(), true), ("gh".into(), false)]
+        );
+        assert_eq!(rendered(line, 8..10, "cdef"), [("ij".into(), false)]);
+    }
+
+    #[test]
+    fn anchors_apply_to_the_line_not_the_row() {
+        assert_eq!(
+            rendered("abcdefgh", 4..8, "^e"),
+            [("efgh".into(), false)]
+        );
+        assert_eq!(
+            rendered("abcdefgh", 0..4, "^a"),
+            [("a".into(), true), ("bcd".into(), false)]
+        );
+        assert_eq!(
+            rendered("abcdefgh\n", 4..9, "h$"),
+            [("efg".into(), false), ("h".into(), true), ("\n".into(), false)]
+        );
+    }
+
+    #[test]
+    fn every_match_is_highlighted() {
+        assert_eq!(
+            rendered("abab", 0..4, "b"),
+            [
+                ("a".into(), false),
+                ("b".into(), true),
+                ("a".into(), false),
+                ("b".into(), true),
+            ]
+        );
+    }
+
+    #[test]
+    fn empty_matches_and_split_chars_are_skipped() {
+        assert!(match_ranges(&Regex::new("x*").unwrap(), "abc").is_empty());
+        assert!(match_ranges(&Regex::new("(?-u:\\xE6)").unwrap(), "漢").is_empty());
     }
 }

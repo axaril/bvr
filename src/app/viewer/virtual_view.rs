@@ -58,14 +58,18 @@ impl CachedLine {
         self.breaks.len() + 1
     }
 
-    /// Text of the visual row `row`. The whole line if it is not wrapped.
-    pub fn row(&self, row: usize) -> &str {
-        let start = match row {
+    /// Byte offset in the line at which the visual row `row` begins.
+    pub fn row_start(&self, row: usize) -> usize {
+        match row {
             0 => 0,
             _ => self.breaks.get(row - 1).copied().unwrap_or(self.data.len()),
-        };
+        }
+    }
+
+    /// Text of the visual row `row`. The whole line if it is not wrapped.
+    pub fn row(&self, row: usize) -> &str {
         let end = self.breaks.get(row).copied().unwrap_or(self.data.len());
-        &self.data[start..end]
+        &self.data[self.row_start(row)..end]
     }
 }
 
