@@ -141,6 +141,17 @@ impl<I> LineIndexWriter<I>
 where
     I: IndexType,
 {
+    fn indexing_pool() -> &'static rayon::ThreadPool {
+        use std::sync::OnceLock;
+        static POOL: OnceLock<rayon::ThreadPool> = OnceLock::new();
+        POOL.get_or_init(|| {
+            rayon::ThreadPoolBuilder::new()
+                .thread_name(|i| format!("bvr-index-{i}"))
+                .build()
+                .expect("indexing thread pool")
+        })
+    }
+
     fn index_file(mut self, file: File, segment_size: u64) -> Result<()> {
         // Build index
         let (sx, rx) = std::sync::mpsc::sync_channel(4);
@@ -164,10 +175,10 @@ where
                     let (task_sx, task_rx) = std::sync::mpsc::channel();
                     sx.send(task_rx).map_err(|_| Error::Internal)?;
 
-                    std::thread::spawn(move || {
-                        IndexingTask::new(curr, &segment).compute(move |upper, lowers| {
+                    Self::indexing_pool().spawn(move || {
+                        let _ = IndexingTask::new(curr, &segment).compute(move |upper, lowers| {
                             task_sx.send((upper, lowers)).map_err(|_| Error::Internal)
-                        })
+                        });
                     });
 
                     curr = end;

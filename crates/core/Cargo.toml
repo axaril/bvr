@@ -14,8 +14,8 @@ memmap2 = "0.9"
 lru = { workspace = true }
 regex = { workspace = true }
 arc-swap = "1.9"
-tempfile = "3.27"
 rayon = "1.12"
+tempfile = "3.27"
 
 [dev-dependencies]
 anyhow = "1.0"
