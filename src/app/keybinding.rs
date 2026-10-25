@@ -636,7 +636,7 @@ impl Keybinding {
                     },
                 })),
                 KeyCode::Char(c @ ('n' | 'N')) => Some(Action::Visual(VisualAction::Move {
-                    direction: Direction::back_if(c.to_ascii_lowercase() == 'N'),
+                    direction: Direction::back_if(c.to_ascii_lowercase() == 'n'),
                     delta: ViewDelta::Match,
                     select: key.modifiers.contains(KeyModifiers::SHIFT),
                 })),
