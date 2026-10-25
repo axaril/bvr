@@ -1,15 +1,13 @@
 use crate::{
     app::filters,
     direction::Direction,
-    text::{is_printable_ascii, strip_terminator},
+    text::{DEFAULT_TAB_WIDTH, wrap_points},
     view_bounds::ViewBounds,
 };
 
 use bvr_core::{LineSet, SegBuffer, SegStr};
 use ratatui::style::Color;
 use std::collections::VecDeque;
-use unicode_segmentation::UnicodeSegmentation;
-use unicode_width::UnicodeWidthStr;
 
 #[derive(Clone)]
 pub struct CachedLine {
@@ -24,9 +22,15 @@ pub struct CachedLine {
 }
 
 impl CachedLine {
-    fn new(index: usize, line_number: usize, data: SegStr, wrap_width: Option<usize>) -> Self {
+    fn new(
+        index: usize,
+        line_number: usize,
+        data: SegStr,
+        wrap_width: Option<usize>,
+        tab_width: usize,
+    ) -> Self {
         let breaks = wrap_width
-            .map(|width| Self::compute_breaks(&data, width))
+            .map(|width| wrap_points(&data, width, tab_width))
             .unwrap_or_default();
 
         Self {
@@ -37,32 +41,6 @@ impl CachedLine {
             bookmarked: false,
             breaks,
         }
-    }
-
-    fn compute_breaks(data: &str, width: usize) -> Vec<usize> {
-        // The line terminator stays on the last row rather than spilling onto a row of its own.
-        let content = strip_terminator(data);
-
-        // Every character takes a column, so rows are simply `width` bytes long.
-        if is_printable_ascii(content) {
-            return (width..content.len()).step_by(width).collect();
-        }
-
-        Self::compute_breaks_by_width(content, width)
-    }
-
-    fn compute_breaks_by_width(content: &str, width: usize) -> Vec<usize> {
-        let mut breaks = Vec::new();
-        let mut col = 0;
-        for (idx, grapheme) in content.grapheme_indices(true) {
-            let grapheme_width = grapheme.width();
-            if col + grapheme_width > width && col > 0 {
-                breaks.push(idx);
-                col = 0;
-            }
-            col += grapheme_width;
-        }
-        breaks
     }
 
     /// Number of visual rows this line occupies.
@@ -96,6 +74,7 @@ pub struct VirtualView {
     /// Always 0 when line wrapping is disabled.
     top_row: usize,
     wrap: bool,
+    tab_width: usize,
 
     follow_output: bool,
     end_index: usize,
@@ -111,6 +90,7 @@ impl VirtualView {
             bounds: ViewBounds::new(),
             top_row: 0,
             wrap: false,
+            tab_width: DEFAULT_TAB_WIDTH,
             follow_output: false,
             need_recoloring: false,
             end_index: 0,
@@ -169,7 +149,13 @@ impl VirtualView {
         let line_number = self.line_at_view_index(index)?;
         let data = buf.get_line(line_number)?;
 
-        Some(CachedLine::new(index, line_number, data, self.wrap_width()))
+        Some(CachedLine::new(
+            index,
+            line_number,
+            data,
+            self.wrap_width(),
+            self.tab_width,
+        ))
     }
 
     fn push_front(&mut self, index: usize, buf: &SegBuffer) -> bool {
@@ -418,12 +404,15 @@ impl VirtualView {
 
     /// Resizes the view. `width` is the width available to line contents,
     /// which is also the width lines are wrapped at when `wrap` is set.
-    pub fn fit(&mut self, height: usize, width: usize, wrap: bool) {
+    pub fn fit(&mut self, height: usize, width: usize, wrap: bool, tab_width: usize) {
         let old_wrap_width = self.wrap_width();
+        let old_tab_width = self.tab_width;
         self.bounds.fit(height, width);
         self.wrap = wrap;
+        self.tab_width = tab_width;
 
-        if self.wrap_width() != old_wrap_width {
+        // Tabs change where lines wrap, but only when they are wrapped.
+        if self.wrap_width() != old_wrap_width || (self.wrap && tab_width != old_tab_width) {
             self.cache.clear();
         }
     }
@@ -445,7 +434,7 @@ mod test {
         buf.wait_complete();
 
         let mut view = VirtualView::new(buf.all_line_matches());
-        view.fit(height, width, wrap);
+        view.fit(height, width, wrap, DEFAULT_TAB_WIDTH);
         view.set_end_index(view.composite().len());
         assert_eq!(view.composite().len(), lines.len());
         view.populate(&buf, None);
@@ -465,7 +454,7 @@ mod test {
             let buf = SegBuffer::read_stream(Box::new(std::io::Cursor::new(format!("{data}\n"))))
                 .unwrap();
             buf.wait_complete();
-            CachedLine::new(0, 0, buf.get_line(0).unwrap(), Some(width))
+            CachedLine::new(0, 0, buf.get_line(0).unwrap(), Some(width), DEFAULT_TAB_WIDTH)
         };
         let row_strs = |line: &CachedLine| {
             (0..line.row_count())
@@ -480,20 +469,6 @@ mod test {
         assert_eq!(row_strs(&line("a漢字b", 4)), ["a漢", "字b"]);
         // A grapheme wider than the view still gets a row to itself.
         assert_eq!(row_strs(&line("漢字", 1)), ["漢", "字"]);
-    }
-
-    #[test]
-    fn ascii_breaks_agree_with_segmentation() {
-        for len in 0..40 {
-            let data = "x".repeat(len);
-            for width in 1..12 {
-                assert_eq!(
-                    CachedLine::compute_breaks(&data, width),
-                    CachedLine::compute_breaks_by_width(&data, width),
-                    "len {len}, width {width}"
-                );
-            }
-        }
     }
 
     #[test]
@@ -592,18 +567,18 @@ mod test {
         view.pan_vertical(&buf, Direction::Next, 1);
         assert_eq!(rows(&view), [(0, "aaaa".into()), (1, "b".into())]);
 
-        view.fit(3, 8, true);
+        view.fit(3, 8, true, DEFAULT_TAB_WIDTH);
         view.populate(&buf, None);
         assert_eq!(rows(&view), [(0, "aaaaaaaa".into()), (1, "b".into())]);
 
-        view.fit(3, 2, true);
+        view.fit(3, 2, true, DEFAULT_TAB_WIDTH);
         view.populate(&buf, None);
         assert_eq!(
             rows(&view),
             [(0, "aa".into()), (0, "aa".into()), (0, "aa".into())]
         );
 
-        view.fit(3, 2, false);
+        view.fit(3, 2, false, DEFAULT_TAB_WIDTH);
         view.populate(&buf, None);
         assert_eq!(rows(&view), [(0, "aaaaaaaa".into()), (1, "b".into())]);
     }

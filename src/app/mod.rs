@@ -193,6 +193,10 @@ impl App {
                     .aliases(&["w"])
                     .description("Toggle line wrapping.")
                     .bind(Self::command_wrap),
+                Command::new("tabwidth")
+                    .aliases(&["tw"])
+                    .description("Set the columns between tab stops (1-8), or show it.")
+                    .bind(Self::command_tab_width),
             ]),
     ];
 
@@ -931,6 +935,28 @@ impl App {
         }
     }
 
+    fn command_tab_width(&mut self, args: &str) {
+        let v = self.viewer();
+        let args = args.trim();
+        if args.is_empty() {
+            let width = v.config.settings.tab_width();
+            v.status.msg(format!("tab width: {width}"));
+            return;
+        }
+        match args.parse::<usize>() {
+            Ok(width) if (1..=crate::text::MAX_TAB_WIDTH).contains(&width) => {
+                match v.config.settings.set_tab_width(width) {
+                    Err(err) => v.status.msg(format!("tab width: {err}")),
+                    Ok(()) => v.status.msg(format!("tab width: {width}")),
+                }
+            }
+            _ => v.status.msg(format!(
+                "tab width: expected a number from 1 to {}",
+                crate::text::MAX_TAB_WIDTH
+            )),
+        }
+    }
+
     fn command_mux_tabs(&mut self, _: &str) {
         let v = self.viewer();
         v.mux.set_mode(mux::Mode::ActiveOnly);
@@ -1334,6 +1360,7 @@ impl Viewer {
                     self.mode == InputMode::Visual,
                     self.config.settings.show_gutter(),
                     self.config.settings.wrap(),
+                    self.config.settings.tab_width(),
                     regex,
                 )
                 .render(pane_chunk, buf, handler);

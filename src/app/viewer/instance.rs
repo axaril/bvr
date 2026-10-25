@@ -97,8 +97,8 @@ impl Instance {
         self.view.bottom()
     }
 
-    pub fn update_view_bounds(&mut self, height: usize, width: usize, wrap: bool) {
-        self.view.fit(height, width, wrap);
+    pub fn update_view_bounds(&mut self, height: usize, width: usize, wrap: bool, tab_width: usize) {
+        self.view.fit(height, width, wrap, tab_width);
         self.view.set_end_index(self.visible_line_count());
     }
 

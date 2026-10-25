@@ -1,4 +1,5 @@
 use anyhow::Result;
+use crate::text::{DEFAULT_TAB_WIDTH, MAX_TAB_WIDTH};
 use serde::{Deserialize, Serialize};
 
 const FILE: &str = "config.toml";
@@ -13,6 +14,8 @@ struct LoadedSettings {
     persist_filter: bool,
     #[serde(default = "LoadedSettings::default_wrap")]
     wrap: bool,
+    #[serde(default = "LoadedSettings::default_tab_width")]
+    tab_width: usize,
 }
 
 impl Default for LoadedSettings {
@@ -22,6 +25,7 @@ impl Default for LoadedSettings {
             mouse_capture: Self::default_mouse_capture(),
             persist_filter: Self::default_persist_filter(),
             wrap: Self::default_wrap(),
+            tab_width: Self::default_tab_width(),
         }
     }
 }
@@ -41,6 +45,10 @@ impl LoadedSettings {
 
     fn default_wrap() -> bool {
         false
+    }
+
+    fn default_tab_width() -> usize {
+        DEFAULT_TAB_WIDTH
     }
 }
 
@@ -109,6 +117,20 @@ impl SettingsConfigState {
         self.inner.load_read_save(|data| {
             data.wrap = !data.wrap;
             data.wrap
+        })
+    }
+
+    /// Columns between tab stops, kept within `1..=MAX_TAB_WIDTH` however the config file reads.
+    pub fn tab_width(&self) -> usize {
+        self.inner
+            .read(|data| data.tab_width)
+            .unwrap_or(DEFAULT_TAB_WIDTH)
+            .clamp(1, MAX_TAB_WIDTH)
+    }
+
+    pub fn set_tab_width(&mut self, tab_width: usize) -> Result<()> {
+        self.inner.load_and_save(|data| {
+            data.tab_width = tab_width;
         })
     }
 }
