@@ -420,35 +420,18 @@ where
         self.lower.len().saturating_sub(1)
     }
 
+    /// Upper bits of `line_number`, given the `(first_line, upper)` entries
+    /// in `upper`, which are sorted by strictly increasing `first_line`.
+    #[inline(always)]
+    fn upper_bits_in(upper: &[(usize, usize)], line_number: usize) -> u64 {
+        let n = upper.partition_point(|&(first_line, _)| first_line <= line_number);
+        let bits = n.checked_sub(1).map_or(0, |i| upper[i].1);
+        I::reconstruct_upper(bits as u64)
+    }
+
     pub fn upper_bits(&self, line_number: usize) -> u64 {
-        // Find first entry where key >= index
-        let upper_bits = 'binary_search: {
-            let buf = self.upper.snapshot();
-
-            let mut size = buf.len();
-            if size == 0 {
-                break 'binary_search 0;
-            }
-            let mut base = 0usize;
-
-            // Based on std::slice::binary_search_by, specialized for the container
-            while size > 1 {
-                let half = size / 2;
-                let mid = base + half;
-                let &(i, _) = unsafe { buf.get_unchecked(mid) };
-                base = std::hint::select_unpredictable(i > line_number, base, mid);
-                size -= half;
-            }
-
-            let &(i, diff) = unsafe { buf.get_unchecked(base) };
-            if i <= line_number {
-                diff as u64
-            } else {
-                0
-            }
-        };
-
-        I::reconstruct_upper(upper_bits)
+        self.upper
+            .read(|upper| Self::upper_bits_in(upper, line_number))
     }
 
     pub fn data_of_line(&self, line_number: usize) -> Option<u64> {
@@ -459,27 +442,35 @@ where
     }
 
     pub fn line_of_data(&self, key: u64) -> Option<usize> {
-        let buf = self.lower.snapshot();
-        let mut size = buf.len().saturating_sub(1);
+        // `lower` must be read before `upper`: the writer pushes an upper entry
+        // before the lowers it covers, so this upper slice covers every line
+        // below `len`.
+        let len = self.lower.len();
+        let mut size = len.saturating_sub(1);
         if size == 0 {
             return None;
         }
 
-        // Based on std::slice::binary_search_by, specialized for the container
-        // Find last line where data_of_line(line) <= key
-        let mut base = 0;
-        while size > 1 {
-            let half = size / 2;
-            let mid = base + half;
-            let start = unsafe { self.data_of_line(mid).unwrap_unchecked() };
-            base = std::hint::select_unpredictable(start > key, base, mid);
-            size -= half;
-        }
+        self.upper.read(|upper| {
+            // `lower` is append-only, so every line below `len` stays readable.
+            let data_of_line = |line| {
+                let lower = unsafe { self.lower.get(line).unwrap_unchecked() };
+                lower.reconstruct_lower() + Self::upper_bits_in(upper, line)
+            };
 
-        // Verify the candidate is a valid match
-        let start = unsafe { self.data_of_line(base).unwrap_unchecked() };
-        let end = unsafe { self.data_of_line(base + 1).unwrap_unchecked() };
-        (start <= key && key < end).then_some(base)
+            // Based on std::slice::binary_search_by, specialized for the container
+            // Find last line where data_of_line(line) <= key
+            let mut base = 0;
+            while size > 1 {
+                let half = size / 2;
+                let mid = base + half;
+                base = std::hint::select_unpredictable(data_of_line(mid) > key, base, mid);
+                size -= half;
+            }
+
+            // Verify the candidate is a valid match
+            (data_of_line(base) <= key && key < data_of_line(base + 1)).then_some(base)
+        })
     }
 
     pub fn is_complete(&self) -> bool {

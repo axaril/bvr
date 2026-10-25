@@ -342,7 +342,7 @@ impl<T> CowVec<T> {
     }
 
     #[inline(always)]
-    fn read<F, R>(&self, cb: F) -> R
+    pub(crate) fn read<F, R>(&self, cb: F) -> R
     where
         F: FnOnce(&[T]) -> R,
     {
