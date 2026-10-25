@@ -200,6 +200,9 @@ where
             }
         }
 
+        // Close the channel so the spawner's `send` fails instead of blocking
+        // forever if we stopped early.
+        drop(rx);
         spawner.join().map_err(|_| Error::Internal)??;
         self.push(len);
 

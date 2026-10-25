@@ -92,7 +92,7 @@ impl<T> SplitCowVecWriter<T> {
         const NOTIFY_INTERVAL: usize = 1 << 14;
         // Notify readers every NOTIFY_INTERVAL pushes to avoid waking them up too frequently.
         if self.last_notified + len >= NOTIFY_INTERVAL {
-            self.target.condvar.notify_all();
+            self.target.notify_all();
             self.last_notified = 0;
         } else {
             self.last_notified += len;
@@ -129,7 +129,7 @@ impl<T> SplitCowVecWriter<T> {
 impl<T> Drop for SplitCowVecWriter<T> {
     fn drop(&mut self) {
         self.target.completed.store(true, Ordering::Release);
-        self.target.condvar.notify_all();
+        self.target.notify_all();
     }
 }
 
@@ -231,6 +231,13 @@ impl<T> SplitCowVec<T> {
 
     pub fn wait_complete(&self) {
         self.wait_for_index(usize::MAX)
+    }
+
+    /// Wakes all waiters. The lock is taken first so that a waiter cannot
+    /// observe a stale condition and then park after this notification.
+    fn notify_all(&self) {
+        drop(self.condvar_lock.lock());
+        self.condvar.notify_all();
     }
 
     /// Takes an atomic snapshot of all segments at the current point in time.

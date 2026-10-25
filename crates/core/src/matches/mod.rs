@@ -19,6 +19,9 @@ struct LineMatchWriter {
 impl LineMatchWriter {
     pub fn search(mut self, mut iter: ContiguousSegmentIterator, regex: Regex) -> Result<()> {
         loop {
+            // Read completion before `next()`, so a `None` is only treated as
+            // the end if the index had already finished when we asked.
+            let complete = iter.index().is_complete();
             if !self.buf.has_readers() {
                 break;
             } else if let Some(segment) = iter.next() {
@@ -49,7 +52,7 @@ impl LineMatchWriter {
                     line += 1;
                     counted_to = res.start() + eol + 1;
                 }
-            } else if iter.index().is_complete() {
+            } else if complete {
                 break;
             } else {
                 iter.index().wait_for_line(iter.remaining_range().start);
@@ -214,7 +217,7 @@ impl LineSet {
         match self {
             LineSet::All { buf } => {
                 if line_number < buf.line_count() {
-                    Some((line_number + 1).min(buf.line_count()))
+                    Some((line_number + 1).min(buf.line_count() - 1))
                 } else {
                     None
                 }

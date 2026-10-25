@@ -165,7 +165,7 @@ impl App {
                     .description("Load a filter set from the config into the current view.")
                     .bind(Self::command_filter_load),
                 Command::new("clear")
-                    .aliases(&["c"])
+                    .aliases(&["clr"])
                     .description("Clear all filters from the current view.")
                     .bind(Self::command_filter_clear),
                 Command::new("union")

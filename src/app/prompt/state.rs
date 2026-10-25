@@ -277,25 +277,34 @@ impl PromptApp {
         self.cursor.place(self.buf().len());
     }
 
+    /// Take the current buffer and record it as the most recent history entry.
+    /// A recalled history entry is moved to the end rather than duplicated.
     pub fn submit(&mut self) -> String {
+        if self.index < self.history.len() {
+            let entry = self.history.remove(self.index);
+            self.history.push(entry);
+            self.index = self.history.len() - 1;
+        }
         let output = self.take();
         if self.history.last() != Some(&output) {
             self.history.push(output.clone());
-            self.index = self.history.len();
         }
+        self.index = self.history.len();
         output
     }
 
+    /// Take the current buffer and reset the prompt. History is not modified.
     pub fn take(&mut self) -> String {
         self.clear_completion_cycle();
 
         self.cursor.reset();
-        if self.index < self.history.len() {
-            let output = self.history.remove(self.index);
-            self.index = self.history.len();
-            output
+        let output = if self.index < self.history.len() {
+            self.buf.clear();
+            self.history[self.index].clone()
         } else {
             std::mem::take(&mut self.buf)
-        }
+        };
+        self.index = self.history.len();
+        output
     }
 }

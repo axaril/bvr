@@ -163,7 +163,7 @@ where
         const NOTIFY_INTERVAL: usize = 1 << 14;
         // Notify readers every NOTIFY_INTERVAL pushes to avoid waking them up too frequently.
         if self.last_notified + len >= NOTIFY_INTERVAL {
-            self.target.condvar.notify_all();
+            self.target.notify_all();
             self.last_notified = 0;
         } else {
             self.last_notified += len;
@@ -214,7 +214,7 @@ impl<T> Deref for CowVecWriter<T> {
 impl<T> Drop for CowVecWriter<T> {
     fn drop(&mut self) {
         assert!(self.target.completed.set(self.buf.clone()).is_ok());
-        self.target.condvar.notify_all();
+        self.target.notify_all();
     }
 }
 
@@ -332,6 +332,13 @@ impl<T> CowVec<T> {
 
     pub fn wait_complete(&self) {
         self.wait_for_index(usize::MAX)
+    }
+
+    /// Wakes all waiters. The lock is taken first so that a waiter cannot
+    /// observe a stale condition and then park after this notification.
+    fn notify_all(&self) {
+        drop(self.condvar_lock.lock());
+        self.condvar.notify_all();
     }
 
     #[inline(always)]
