@@ -84,7 +84,7 @@ impl ColorSelector {
         if let Some(support) = supports_color::on(Stream::Stdout) {
             if support.has_256 {
                 return Self::Color256 { index: 0 };
-            } else if support.has_256 {
+            } else if support.has_basic {
                 return Self::Ansi { index: 0 };
             }
         }
